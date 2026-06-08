@@ -68,6 +68,13 @@ async def _auth_post(path: str, username: str, password: str) -> dict[str, Any]:
         return r.json()
 
 
+async def reset(chat_id: int, password: str) -> None:
+    """Factory reset (Danger Zone): POST /settings/reset {password}. Re-verified server-side,
+    this wipes ALL data including the account, so the session is dead afterwards — callers
+    should lock the session and send the user back to login/signup."""
+    await request(chat_id, "POST", "/settings/reset", json={"password": password})
+
+
 async def request(chat_id: int, method: str, path: str, *,
                   params: dict[str, Any] | None = None,
                   json: dict[str, Any] | list[Any] | None = None) -> Any:

@@ -8,9 +8,9 @@ from aiogram.types import CallbackQuery, Message
 
 from . import wizard
 from .. import api, common, keyboards
-from ..keyboards import esc, fmt_money, ikb
+from ..keyboards import esc, fmt_money, fmt_pct, ikb
 from ..session import store
-from ..states import FinAction
+from ..states import FinAction, GoalValue
 
 router = Router()
 MAX_ROWS = 10
@@ -18,6 +18,10 @@ MAX_ROWS = 10
 
 def _today() -> str:
     return dt.date.today().isoformat()
+
+
+def _month_now() -> str:
+    return dt.date.today().strftime("%Y-%m")
 
 
 def _find(items, cid):
@@ -29,7 +33,7 @@ def _menu_kb():
         [("📕 Debts", "fin:debt"), ("📗 Loans given", "fin:loangiven")],
         [("📘 Loans taken", "fin:loantaken"), ("🏛 Bank loans", "fin:bankloan")],
         [("🔁 Subscriptions", "fin:monthly"), ("🎁 Donations", "fin:donation")],
-        [("📈 Investments", "fin:investment")],
+        [("📈 Investments", "fin:investment"), ("🎯 Savings goals", "fin:savings")],
         [("⬅️ Menu", "menu:home")],
     ])
 
@@ -68,7 +72,7 @@ async def on_section(cb: CallbackQuery) -> None:
     fn = {
         "debt": show_debts, "loangiven": show_loans_given, "loantaken": show_loans_taken,
         "bankloan": show_bank_loans, "monthly": show_monthly, "donation": show_donations,
-        "investment": show_investments,
+        "investment": show_investments, "savings": show_savings,
     }.get(section)
     if fn:
         await fn(cb)
@@ -177,27 +181,58 @@ async def show_investments(cb: CallbackQuery) -> None:
     rows = await _fetch(cb, "/finance/investments")
     if rows is None:
         return
+    plain = [i for i in rows if not i.get("savingsGoal")]
     lines = ["📈 <b>Investments</b>\n"]
-    if not rows:
+    if not plain:
         lines.append("Nothing here yet.")
-    for i in rows[:20]:
+    for i in plain[:20]:
         cur = i.get("currency")
-        typ = str(i.get("type", "")).replace("_", " ").title()
+        typ = esc(str(i.get("type", "")).replace("_", " ").title())
         lines.append(f"• {esc(i.get('name'))} ({typ}): {fmt_money(i.get('investedAmount'), cur)}")
     await cb.message.edit_text("\n".join(lines), reply_markup=_section_kb("investment"))
+
+
+async def show_savings(cb: CallbackQuery) -> None:
+    rows = await _fetch(cb, "/finance/investments")
+    if rows is None:
+        return
+    goals = [i for i in rows if i.get("savingsGoal")]
+    lines, actions = ["🎯 <b>Savings goals</b> · optional, apart from the 4 buckets\n"], []
+    if not goals:
+        lines.append("No savings goals yet. Tap ➕ Add to start one.")
+    for g in goals:
+        cur = g.get("currency")
+        value = g.get("currentValue")
+        if value is None:
+            value = g.get("investedAmount")
+        tgt = f" / {fmt_money(g.get('targetAmount'), cur)}" if g.get("targetAmount") is not None else ""
+        prog = f" · {fmt_pct(g.get('progressPercent'))}" if g.get("progressPercent") is not None else ""
+        lines.append(f"• {esc(g.get('name'))}: {fmt_money(value, cur)}{tgt}{prog}")
+        if len(actions) < MAX_ROWS:
+            actions.append([(f"💰 Add to {str(g.get('name'))[:14]}", f"fact:goalcontrib:{g['id']}"),
+                            ("📈 Value", f"goal:value:{g['id']}")])
+    await cb.message.edit_text("\n".join(lines), reply_markup=_section_kb("goal", actions))
 
 
 # ── action conversation: repay / mark-returned / pay ───────────────────────
 KIND_CFG = {
     "debt": {"list": "/finance/debts", "name": "creditorName", "suggest": "remainingAmount",
-             "verb": "Repay debt to", "endpoint": "/finance/debts/{id}/repay", "action": "repay"},
+             "verb": "Repay debt to", "endpoint": "/finance/debts/{id}/repay", "action": "repay",
+             "markkind": "DEBT"},
     "loantaken": {"list": "/finance/loans-taken", "name": "lenderName", "suggest": "remainingAmount",
-                  "verb": "Repay loan from", "endpoint": "/finance/loans-taken/{id}/repay", "action": "repay"},
+                  "verb": "Repay loan from", "endpoint": "/finance/loans-taken/{id}/repay", "action": "repay",
+                  "markkind": "PERSONAL_LOAN"},
     "loangiven": {"list": "/finance/loans-given", "name": "debtorName", "suggest": "pendingAmount",
                   "verb": "Mark returned by", "endpoint": "/finance/loans-given/{id}/mark-returned",
                   "action": "markreturned"},
     "monthly": {"list": "/finance/monthly-payments", "name": "name", "suggest": "amount",
-                "verb": "Pay", "endpoint": "/finance/monthly-payments/{id}/pay", "action": "pay"},
+                "verb": "Pay", "endpoint": "/finance/monthly-payments/{id}/pay", "action": "pay",
+                "markkind": "SUBSCRIPTION"},
+    # Savings-goal contribution — reuses the amount→source→confirm flow. No suggested amount
+    # (investments have no "remainingAmount" key, so the "Use …" button is skipped).
+    "goalcontrib": {"list": "/finance/investments", "name": "name", "suggest": "remainingAmount",
+                    "verb": "Contribute to", "endpoint": "/finance/investments/{id}/contribute",
+                    "action": "contribute"},
 }
 
 
@@ -226,15 +261,45 @@ async def fa_entry(cb: CallbackQuery, state: FSMContext) -> None:
     suggested = rec.get(cfg["suggest"]) or 0
     await state.set_state(FinAction.amount)
     await state.update_data(fa_action=cfg["action"], fa_endpoint=cfg["endpoint"].format(id=rid),
-                            fa_currency=rec.get("currency"), fa_name=rec.get(cfg["name"], "?"))
+                            fa_currency=rec.get("currency"), fa_name=rec.get(cfg["name"], "?"),
+                            fa_markkind=cfg.get("markkind"), fa_refid=rid, fa_mark=False)
     kb_rows = []
     if suggested and suggested > 0:
         kb_rows.append([(f"Use {fmt_money(suggested, rec.get('currency'))}", "fause")])
         await state.update_data(fa_suggested=suggested)
+    # "Already paid" — mark satisfied for the month with no transaction (debts / loans / subscriptions).
+    if cfg.get("markkind"):
+        kb_rows.append([("✅ Already paid", "famark")])
     kb_rows.append([("✖️ Cancel", "fact:cancel")])
     await cb.message.edit_text(
         f"{cfg['verb']} <b>{esc(rec.get(cfg['name']))}</b>\nSend the amount in {rec.get('currency')}:",
         reply_markup=ikb(kb_rows))
+
+
+@router.callback_query(StateFilter(FinAction.amount), F.data == "famark")
+async def fa_mark_start(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    await state.update_data(fa_mark=True)
+    d = await state.get_data()
+    cur = d["fa_currency"]
+    kb_rows = []
+    sug = d.get("fa_suggested")
+    if sug and sug > 0:
+        kb_rows.append([(f"Use {fmt_money(sug, cur)}", "fause")])
+    kb_rows.append([("✖️ Cancel", "fact:cancel")])
+    await cb.message.edit_text(
+        f"Mark <b>{esc(d['fa_name'])}</b> as already paid.\n"
+        f"Send the amount in {cur} — <i>no transaction will be recorded</i>:",
+        reply_markup=ikb(kb_rows))
+
+
+async def _fa_after_amount(event, state: FSMContext) -> None:
+    """Branch once the amount is captured: already-paid → mark confirm; else → pick a source."""
+    d = await state.get_data()
+    if d.get("fa_mark"):
+        await _fa_mark_confirm(event, state)
+    else:
+        await _fa_source(event, state)
 
 
 @router.callback_query(StateFilter(FinAction.amount), F.data == "fause")
@@ -242,7 +307,7 @@ async def fa_use(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
     d = await state.get_data()
     await state.update_data(fa_amount=d.get("fa_suggested"))
-    await _fa_source(cb, state)
+    await _fa_after_amount(cb, state)
 
 
 @router.message(StateFilter(FinAction.amount))
@@ -253,7 +318,7 @@ async def fa_amount(message: Message, state: FSMContext) -> None:
         await message.answer("Send a positive number.")
         return
     await state.update_data(fa_amount=amt)
-    await _fa_source(message, state)
+    await _fa_after_amount(message, state)
 
 
 async def _fa_source(event, state: FSMContext) -> None:
@@ -289,6 +354,42 @@ async def fa_src(cb: CallbackQuery, state: FSMContext) -> None:
         reply_markup=ikb([[("✅ Confirm", "faok"), ("✖️ Cancel", "fact:cancel")]]))
 
 
+async def _fa_mark_confirm(event, state: FSMContext) -> None:
+    d = await state.get_data()
+    await state.set_state(FinAction.confirm)
+    await common.show(
+        event,
+        f"Mark as <b>already paid</b> (no transaction, no money moved):\n\n"
+        f"{esc(d['fa_name'])}\nAmount: <b>{fmt_money(d['fa_amount'], d['fa_currency'])}</b>",
+        ikb([[("✅ Confirm", "famarkok"), ("✖️ Cancel", "fact:cancel")]]))
+
+
+@router.callback_query(StateFilter(FinAction.confirm), F.data == "famarkok")
+async def fa_mark_ok(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    d = await state.get_data()
+    payload = {"kind": d["fa_markkind"], "refId": d.get("fa_refid"),
+               "amount": d["fa_amount"], "currency": d["fa_currency"], "month": _month_now()}
+    try:
+        await api.request(cb.message.chat.id, "POST", "/finance/mark-paid", json=payload)
+    except api.NeedsLogin:
+        await state.clear()
+        await cb.message.edit_text("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        return
+    except api.ApiError as exc:
+        await state.clear()
+        await cb.message.edit_text(f"❌ {esc(exc.message)}", reply_markup=_back_kb())
+        return
+    except Exception:  # noqa: BLE001
+        await state.clear()
+        await cb.message.edit_text("❌ Couldn't reach the server.", reply_markup=_back_kb())
+        return
+    await state.clear()
+    await cb.message.edit_text(
+        f"✅ Marked already paid: <b>{fmt_money(d['fa_amount'], d['fa_currency'])}</b> · {esc(d['fa_name'])}.",
+        reply_markup=_back_kb())
+
+
 @router.callback_query(StateFilter(FinAction.confirm), F.data == "faok")
 async def fa_confirm(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
@@ -297,6 +398,10 @@ async def fa_confirm(cb: CallbackQuery, state: FSMContext) -> None:
     if d["fa_action"] == "pay":
         payload = {"amount": d["fa_amount"], "paymentDate": _today(),
                    "mode": "CARD" if card_id is not None else "CASH"}
+        if card_id is not None:
+            payload["cardId"] = card_id
+    elif d["fa_action"] == "contribute":
+        payload = {"amount": d["fa_amount"], "currency": d["fa_currency"], "date": _today()}
         if card_id is not None:
             payload["cardId"] = card_id
     else:
@@ -324,8 +429,10 @@ async def fa_confirm(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ── create (generic wizard) ─────────────────────────────────────────────────
-INVESTMENT_TYPES = [("STOCKS", "Stocks"), ("CRYPTO", "Crypto"), ("REAL_ESTATE", "Real estate"),
-                    ("BONDS", "Bonds"), ("MUTUAL_FUND", "Mutual fund"), ("GOLD", "Gold"), ("OTHER", "Other")]
+# Must match the backend InvestmentType enum (STOCKS & CRYPTO were removed — stocks are
+# tracked via the STOCK_PURCHASE transaction sub-type / "Stocks" category, not here).
+INVESTMENT_TYPES = [("REAL_ESTATE", "Real estate"), ("BONDS", "Bonds"),
+                    ("MUTUAL_FUND", "Mutual fund"), ("GOLD", "Gold"), ("OTHER", "Other")]
 
 CREATE_SECTIONS = {
     "debt": {"title": "New debt", "endpoint": "/finance/debts", "back": "fin:debt",
@@ -386,6 +493,16 @@ CREATE_SECTIONS = {
                        {"key": "purchaseDate", "label": "Purchase date", "kind": "date", "required": True, "today": True},
                        {"key": "description", "label": "Description", "kind": "text", "required": False},
                    ]},
+    "goal": {"title": "New savings goal", "endpoint": "/finance/investments", "back": "fin:savings",
+             "success": "Savings goal created.", "auto_currency": True,
+             "fixed": {"savingsGoal": True, "type": "OTHER"}, "fields": [
+                 {"key": "name", "label": "Goal name (e.g. iPhone, Home)", "kind": "text", "required": True},
+                 {"key": "investedAmount", "label": "Amount saved so far", "kind": "amount", "required": True},
+                 {"key": "targetAmount", "label": "Target amount", "kind": "amount", "required": False},
+                 {"key": "currentValue", "label": "Current value (if grown)", "kind": "amount", "required": False},
+                 {"key": "purchaseDate", "label": "Start date", "kind": "date", "required": True, "today": True},
+                 {"key": "description", "label": "Notes", "kind": "text", "required": False},
+             ]},
 }
 
 
@@ -400,3 +517,58 @@ async def create_entry(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.message.edit_text("Unknown section.", reply_markup=_back_kb())
         return
     await wizard.start(cb, state, spec)
+
+
+# ── savings goal: update current value ──────────────────────────────────────
+@router.callback_query(F.data.startswith("goal:value:"))
+async def gv_entry(cb: CallbackQuery, state: FSMContext) -> None:
+    if not await common.gate(cb):
+        return
+    await cb.answer()
+    gid = int(cb.data.split(":")[2])
+    rows = await _fetch(cb, "/finance/investments")
+    if rows is None:
+        return
+    rec = _find(rows, gid)
+    if rec is None:
+        await cb.message.edit_text("That goal no longer exists.", reply_markup=_back_kb())
+        return
+    cur = rec.get("currency")
+    current = rec.get("currentValue")
+    if current is None:
+        current = rec.get("investedAmount")
+    await state.set_state(GoalValue.amount)
+    await state.update_data(gv_id=gid, gv_currency=cur, gv_name=rec.get("name", "?"))
+    await cb.message.edit_text(
+        f"📈 Update value of <b>{esc(rec.get('name'))}</b>\n"
+        f"Current: {fmt_money(current, cur)}\n\nSend the new current value in {cur}:",
+        reply_markup=ikb([[("✖️ Cancel", "fact:cancel")]]))
+
+
+@router.message(StateFilter(GoalValue.amount))
+async def gv_amount(message: Message, state: FSMContext) -> None:
+    from .transactions import parse_amount
+    val = parse_amount(message.text)
+    if val is None:
+        await message.answer("Send a positive number.")
+        return
+    d = await state.get_data()
+    try:
+        await api.request(message.chat.id, "POST", f"/finance/investments/{d['gv_id']}/value",
+                          json={"currentValue": val})
+    except api.NeedsLogin:
+        await state.clear()
+        await message.answer("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        return
+    except api.ApiError as exc:
+        await state.clear()
+        await message.answer(f"❌ {esc(exc.message)}", reply_markup=_back_kb())
+        return
+    except Exception:  # noqa: BLE001
+        await state.clear()
+        await message.answer("❌ Couldn't reach the server.", reply_markup=_back_kb())
+        return
+    await state.clear()
+    await message.answer(
+        f"✅ Updated <b>{esc(d['gv_name'])}</b> value to {fmt_money(val, d['gv_currency'])}.",
+        reply_markup=_back_kb())

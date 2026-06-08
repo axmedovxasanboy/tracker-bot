@@ -177,6 +177,8 @@ async def _finish(event, state: FSMContext) -> None:
     d = await state.get_data()
     spec = d["w_spec"]
     payload = dict(d.get("w_data", {}))
+    if spec.get("fixed"):
+        payload.update(spec["fixed"])  # constant fields the user isn't prompted for (e.g. savingsGoal=true)
     if spec.get("auto_currency"):
         payload["currency"] = store.currency(chat_id)
     back_kb = ikb([[("⬅️ Back", spec["back"])]])

@@ -7,6 +7,7 @@ from .runtime import runtime
 PAGES = [
     ("dashboard", "📊 Dashboard"),
     ("overview", "🎯 Overview"),
+    ("months", "🗓 Months"),
     ("transactions", "💸 Transactions"),
     ("cards", "💳 Cards"),
     ("finance", "🏦 Finance"),
@@ -72,4 +73,4 @@ def back_menu_kb() -> InlineKeyboardMarkup:
 
 def currency_kb(current: str) -> InlineKeyboardMarkup:
     row = [(("✅ " if c == current else "") + c, f"setcur:{c}") for c in CURRENCIES]
-    return ikb([row, [("⬅️ Menu", "menu:home")]])
+    return ikb([row, [("🗑 Clear everything", "reset:start")], [("⬅️ Menu", "menu:home")]])

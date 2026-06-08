@@ -1,4 +1,4 @@
-"""Transactions: add (guided), recent + delete, exchange, bulk add."""
+"""Transactions: add (guided), recent + delete, exchange."""
 import datetime as dt
 
 from aiogram import F, Router
@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from .. import api, common, keyboards
 from ..keyboards import esc, fmt_money, ikb
 from ..session import store
-from ..states import AddTx, Bulk, Exchange
+from ..states import AddTx, Exchange
 
 router = Router()
 PAGE_SIZE = 6
@@ -31,7 +31,7 @@ def parse_amount(text: str):
 def _menu_kb():
     return ikb([
         [("➕ Add", "tx:add"), ("📋 Recent", "tx:recent")],
-        [("🔁 Exchange", "tx:exchange"), ("📥 Bulk add", "tx:bulk")],
+        [("🔁 Exchange", "tx:exchange")],
         [("⬅️ Menu", "menu:home")],
     ])
 
@@ -477,91 +477,3 @@ async def ex_confirm(cb: CallbackQuery, state: FSMContext) -> None:
         return
     await state.clear()
     await cb.message.edit_text("✅ Exchange recorded.", reply_markup=_menu_kb())
-
-
-# ── Bulk add ─────────────────────────────────────────────────────────────
-@router.callback_query(F.data == "tx:bulk")
-async def bulk_entry(cb: CallbackQuery, state: FSMContext) -> None:
-    if not await common.gate(cb):
-        return
-    await cb.answer()
-    await state.set_state(Bulk.type)
-    await cb.message.edit_text("📥 <b>Bulk add</b>\nAll of one type — income or expense?", reply_markup=ikb([
-        [("📈 Income", "btype:INCOME"), ("📉 Expense", "btype:EXPENSE")],
-        [("✖️ Cancel", "tx:cancel")],
-    ]))
-
-
-@router.callback_query(StateFilter(Bulk.type), F.data.startswith("btype:"))
-async def bulk_type(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.answer()
-    await state.update_data(b_type=cb.data.split(":", 1)[1])
-    chat_id = cb.message.chat.id
-    cur = store.currency(chat_id)
-    try:
-        cards = await api.request(chat_id, "GET", "/cards") or []
-    except Exception:  # noqa: BLE001
-        cards = []
-    cards = [c for c in cards if c.get("currency") == cur and c.get("type") != "CASH"]
-    rows = [[("💵 Cash", "bsrc:cash")]]
-    for c in cards:
-        rows.append([(f"💳 {c.get('name', 'Card')} ···{c.get('lastFourDigits', '')}", f"bsrc:card:{c['id']}")])
-    rows.append([("✖️ Cancel", "tx:cancel")])
-    await state.set_state(Bulk.source)
-    await cb.message.edit_text(f"Payment source for all ({cur}):", reply_markup=ikb(rows))
-
-
-@router.callback_query(StateFilter(Bulk.source), F.data.startswith("bsrc:"))
-async def bulk_src(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.answer()
-    await state.update_data(b_cardId=None if cb.data == "bsrc:cash" else int(cb.data.split(":")[2]))
-    await state.set_state(Bulk.lines)
-    await cb.message.edit_text(
-        "Send the lines — one per line: <code>amount description</code>\n\n"
-        "Example:\n<code>50000 lunch\n12000 bus\n300000 rent</code>")
-
-
-@router.message(StateFilter(Bulk.lines))
-async def bulk_lines(message: Message, state: FSMContext) -> None:
-    chat_id = message.chat.id
-    cur = store.currency(chat_id)
-    d = await state.get_data()
-    sub = "REGULAR_INCOME" if d["b_type"] == "INCOME" else "REGULAR_EXPENSE"
-    card_id = d.get("b_cardId")
-    items, skipped = [], 0
-    for line in (message.text or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = line.split(None, 1)
-        amt = parse_amount(parts[0])
-        if amt is None:
-            skipped += 1
-            continue
-        tx = {"type": d["b_type"], "amount": amt, "currency": cur, "transactionDate": _today(),
-              "subType": sub, "cashAmount": amt if card_id is None else 0}
-        if card_id is not None:
-            tx["cardId"] = card_id
-        if len(parts) > 1 and parts[1].strip():
-            tx["description"] = parts[1].strip()
-        items.append(tx)
-    if not items:
-        await message.answer("No valid lines found. Each line must start with an amount.")
-        return
-    try:
-        await api.request(chat_id, "POST", "/transactions/bulk", json={"cardId": card_id, "transactions": items})
-    except api.NeedsLogin:
-        await state.clear()
-        await message.answer("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
-        return
-    except api.ApiError as exc:
-        await state.clear()
-        await message.answer(f"❌ {esc(exc.message)}", reply_markup=_menu_kb())
-        return
-    except Exception:  # noqa: BLE001
-        await state.clear()
-        await message.answer("❌ Couldn't reach the server.", reply_markup=_menu_kb())
-        return
-    await state.clear()
-    note = f" (skipped {skipped} invalid)" if skipped else ""
-    await message.answer(f"✅ Added {len(items)} transaction(s){note}.", reply_markup=_menu_kb())

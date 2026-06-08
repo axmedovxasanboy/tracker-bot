@@ -25,12 +25,6 @@ class Exchange(StatesGroup):
     confirm = State()
 
 
-class Bulk(StatesGroup):
-    type = State()
-    source = State()
-    lines = State()
-
-
 class FinAction(StatesGroup):
     amount = State()
     source = State()
@@ -48,3 +42,16 @@ class CatCreate(StatesGroup):
     parent = State()
     sub_name = State()
     bonus = State()
+
+
+class Reset(StatesGroup):
+    password = State()
+
+
+class CloseMonth(StatesGroup):
+    balance = State()   # one prompt per wallet (index tracked in FSM data)
+    confirm = State()
+
+
+class GoalValue(StatesGroup):
+    amount = State()    # single-step: enter a goal's new current value

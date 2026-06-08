@@ -18,7 +18,7 @@ from aiohttp import web
 
 from . import api, runtime
 from .config import (BOT_TOKEN, WEBHOOK_HOST, WEBHOOK_PATH, WEBHOOK_PORT, WEBHOOK_SECRET)
-from .routers import auth, cards, categories, finance, menu, transactions, wizard
+from .routers import auth, cards, categories, finance, menu, months, transactions, wizard
 
 logger = logging.getLogger("tracker-bot")
 
@@ -57,7 +57,7 @@ def main() -> None:
     # Order: auth (start/login/cancel/lock) → menu (navigation) → wizard (shared create steps)
     # → section routers. State filters keep the right handler active anyway.
     for r in (auth.router, menu.router, wizard.router,
-              transactions.router, finance.router, cards.router, categories.router):
+              transactions.router, finance.router, cards.router, categories.router, months.router):
         dp.include_router(r)
 
     async def on_startup() -> None:
