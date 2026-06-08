@@ -188,7 +188,8 @@ async def show_investments(cb: CallbackQuery) -> None:
     for i in plain[:20]:
         cur = i.get("currency")
         typ = esc(str(i.get("type", "")).replace("_", " ").title())
-        lines.append(f"• {esc(i.get('name'))} ({typ}): {fmt_money(i.get('investedAmount'), cur)}")
+        tag = " · <i>opening</i>" if i.get("openingBalance") else ""
+        lines.append(f"• {esc(i.get('name'))} ({typ}): {fmt_money(i.get('investedAmount'), cur)}{tag}")
     await cb.message.edit_text("\n".join(lines), reply_markup=_section_kb("investment"))
 
 
@@ -489,6 +490,10 @@ CREATE_SECTIONS = {
                        {"key": "name", "label": "Name", "kind": "text", "required": True},
                        {"key": "type", "label": "Type", "kind": "choice", "required": True, "choices": INVESTMENT_TYPES},
                        {"key": "investedAmount", "label": "Amount invested", "kind": "amount", "required": True},
+                       {"key": "openingBalance", "kind": "bool", "required": True,
+                        "label": "Do you already own this? An opening balance is tracked for net worth only — "
+                                 "no money leaves your wallet and it isn't counted in this month's allocation.",
+                        "yes_label": "✅ I already own it (opening balance)", "no_label": "🆕 New purchase"},
                        {"key": "broker", "label": "Broker / platform", "kind": "text", "required": False},
                        {"key": "purchaseDate", "label": "Purchase date", "kind": "date", "required": True, "today": True},
                        {"key": "description", "label": "Description", "kind": "text", "required": False},

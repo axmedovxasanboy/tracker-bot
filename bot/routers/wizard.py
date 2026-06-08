@@ -4,7 +4,7 @@ A caller starts it with `await wizard.start(event, state, spec)`; the spec drive
 and the final POST. Spec is stored in FSM memory (objects kept as-is, no serialization).
 
 spec = {title, endpoint, back (callback_data), success, auto_currency, fields:[{key,label,kind,...}]}
-kinds: text(+regex/regex_msg) | amount(>0) | number(any) | int(+min/max) | date(+today) | month | choice(choices=[(value,label)])
+kinds: text(+regex/regex_msg) | amount(>0) | number(any) | int(+min/max) | date(+today) | month | choice(choices=[(value,label)]) | bool(+yes_label/no_label → True/False)
 """
 import datetime as dt
 import re
@@ -73,6 +73,10 @@ async def _prompt(event, state: FSMContext) -> None:
         body = f"Pick <b>{field['label']}</b>:"
         for value, label in field["choices"]:
             rows.append([(label, f"wchoice:{value}")])
+    elif kind == "bool":
+        body = f"<b>{field['label']}</b>"
+        rows.append([(field.get("yes_label", "✅ Yes"), "wbool:1")])
+        rows.append([(field.get("no_label", "❌ No"), "wbool:0")])
     else:
         body = f"Send <b>{field['label']}</b>:"
     if not field.get("required"):
@@ -107,6 +111,14 @@ async def on_choice(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
     d = await state.get_data()
     await _set(state, d["w_spec"]["fields"][d["w_index"]]["key"], cb.data.split(":", 1)[1])
+    await _advance(cb, state)
+
+
+@router.callback_query(StateFilter(Wizard.step), F.data.startswith("wbool:"))
+async def on_bool(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    d = await state.get_data()
+    await _set(state, d["w_spec"]["fields"][d["w_index"]]["key"], cb.data.split(":", 1)[1] == "1")
     await _advance(cb, state)
 
 
@@ -150,7 +162,7 @@ async def on_text(message: Message, state: FSMContext) -> None:
             await message.answer("Use the format YYYY-MM.")
             return
         val = raw + "-01"
-    elif kind == "choice":
+    elif kind == "choice" or kind == "bool":
         await message.answer("Please tap one of the buttons.")
         return
     else:
