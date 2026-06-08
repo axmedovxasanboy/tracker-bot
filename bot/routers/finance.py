@@ -335,6 +335,9 @@ async def _fa_source(event, state: FSMContext) -> None:
     rows = [[("💵 Cash", "fasrc:cash")]]
     for c in cards:
         rows.append([(f"💳 {c.get('name', 'Card')} ···{c.get('lastFourDigits', '')}", f"fasrc:card:{c['id']}")])
+    # Contributions can be recorded WITHOUT moving money (funds already in the investment account).
+    if d.get("fa_action") == "contribute":
+        rows.append([("🚫 None — just record (no wallet)", "fasrc:none")])
     rows.append([("✖️ Cancel", "fact:cancel")])
     await state.set_state(FinAction.source)
     await common.show(event, f"Pay from ({cur}):", ikb(rows))
@@ -343,8 +346,17 @@ async def _fa_source(event, state: FSMContext) -> None:
 @router.callback_query(StateFilter(FinAction.source), F.data.startswith("fasrc:"))
 async def fa_src(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
+    if cb.data == "fasrc:none":
+        await state.update_data(fa_cardId=None, fa_noWallet=True)
+        d = await state.get_data()
+        await state.set_state(FinAction.confirm)
+        await cb.message.edit_text(
+            f"Confirm:\n\n{esc(d['fa_name'])}\nAmount: <b>{fmt_money(d['fa_amount'], d['fa_currency'])}</b>\n"
+            f"From: None — <i>record only, no money moved</i>",
+            reply_markup=ikb([[("✅ Confirm", "faok"), ("✖️ Cancel", "fact:cancel")]]))
+        return
     card_id = None if cb.data == "fasrc:cash" else int(cb.data.split(":")[2])
-    await state.update_data(fa_cardId=card_id)
+    await state.update_data(fa_cardId=card_id, fa_noWallet=False)
     d = await state.get_data()
     src = "Cash" if card_id is None else next(
         (c.get("name", "Card") for c in d.get("fa_cards", []) if c["id"] == card_id), "Card")
@@ -403,7 +415,9 @@ async def fa_confirm(cb: CallbackQuery, state: FSMContext) -> None:
             payload["cardId"] = card_id
     elif d["fa_action"] == "contribute":
         payload = {"amount": d["fa_amount"], "currency": d["fa_currency"], "date": _today()}
-        if card_id is not None:
+        if d.get("fa_noWallet"):
+            payload["noWallet"] = True
+        elif card_id is not None:
             payload["cardId"] = card_id
     else:
         payload = {"amount": d["fa_amount"], "paymentDate": _today()}
