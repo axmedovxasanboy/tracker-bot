@@ -7,8 +7,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from .. import api, common, keyboards
+from ..config import CURRENCY
+from ..i18n import t
 from ..keyboards import esc, fmt_money, ikb
-from ..session import store
 from ..states import CloseMonth
 
 router = Router()
@@ -20,15 +21,15 @@ def _month_now() -> str:
 
 def _num(text: str):
     """Parse an end-of-month balance — any number incl. 0 / negative (an overdrawn card)."""
-    t = (text or "").strip().replace(" ", "").replace(",", "")
+    v = (text or "").strip().replace(" ", "").replace(",", "")
     try:
-        return float(t)
+        return float(v)
     except ValueError:
         return None
 
 
-def _back_kb():
-    return ikb([[("⬅️ Months", "months:summary"), ("⬅️ Menu", "menu:home")]])
+def _back_kb(chat_id: int):
+    return ikb([[(t(chat_id, "months.backBtn"), "months:summary"), (t(chat_id, "common.menu"), "menu:home")]])
 
 
 # ── summary view ────────────────────────────────────────────────────────────
@@ -38,48 +39,45 @@ async def show_menu(cb: CallbackQuery) -> None:
 
 async def show_summary(cb: CallbackQuery) -> None:
     chat_id = cb.message.chat.id
-    cur = store.currency(chat_id)
     month = _month_now()
     try:
-        s = await api.request(chat_id, "GET", "/months/summary", params={"month": month, "currency": cur})
+        s = await api.request(chat_id, "GET", "/months/summary", params={"month": month, "currency": CURRENCY})
     except api.NeedsLogin:
-        await cb.message.edit_text("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        await cb.message.edit_text(t(chat_id, "common.sessionExpired"), reply_markup=keyboards.login_kb(chat_id))
         return
     except Exception:  # noqa: BLE001
-        await cb.message.edit_text("❌ Couldn't load the monthly summary.", reply_markup=keyboards.back_menu_kb())
+        await cb.message.edit_text(t(chat_id, "months.summaryLoadError"), reply_markup=keyboards.back_menu_kb(chat_id))
         return
     closed = bool(s.get("closed"))
     lines = [
-        f"🗓 <b>Monthly Summary</b> · {cur} · {month}",
-        ("🔒 Closed" if closed else "🟡 Open — not closed yet"),
+        t(chat_id, "months.summaryTitle", currency=CURRENCY, month=month),
+        (t(chat_id, "months.closed") if closed else t(chat_id, "months.open")),
         "",
-        f"▶️ Started with: {fmt_money(s.get('startBalance'), cur)}",
-        f"📈 Earned: <b>{fmt_money(s.get('income'), cur)}</b>",
+        t(chat_id, "months.startedWith", amount=fmt_money(s.get('startBalance'))),
+        t(chat_id, "months.earned", amount=fmt_money(s.get('income'))),
     ]
     if closed:
-        lines.append(f"📉 Spent: <b>{fmt_money(s.get('totalSpent'), cur)}</b>")
-        lines.append(f"💰 Left: <b>{fmt_money(s.get('leftover'), cur)}</b>")
+        lines.append(t(chat_id, "months.spent", amount=fmt_money(s.get('totalSpent'))))
+        lines.append(t(chat_id, "months.left", amount=fmt_money(s.get('leftover'))))
     lines += [
         "",
-        "<b>Where it went</b>",
-        f"• Donation: {fmt_money(s.get('donation'), cur)}",
-        f"• Emergency: {fmt_money(s.get('emergency'), cur)}",
-        f"• Investments: {fmt_money(s.get('investments'), cur)}",
-        f"• Stocks: {fmt_money(s.get('stocks'), cur)}",
-        f"• Savings goals: {fmt_money(s.get('savings'), cur)}",
-        f"• Tagged total: <b>{fmt_money(s.get('taggedTotal'), cur)}</b>",
+        t(chat_id, "months.whereItWent"),
+        t(chat_id, "months.donation", amount=fmt_money(s.get('donation'))),
+        t(chat_id, "months.emergency", amount=fmt_money(s.get('emergency'))),
+        t(chat_id, "months.investments", amount=fmt_money(s.get('investments'))),
+        t(chat_id, "months.stocks", amount=fmt_money(s.get('stocks'))),
+        t(chat_id, "months.savingsGoals", amount=fmt_money(s.get('savings'))),
+        t(chat_id, "months.taggedTotal", amount=fmt_money(s.get('taggedTotal'))),
     ]
     if closed:
-        lines.append(f"• Everyday spending: {fmt_money(s.get('everydaySpend'), cur)}")
+        lines.append(t(chat_id, "months.everydaySpending", amount=fmt_money(s.get('everydaySpend'))))
     else:
-        lines.append("• Everyday spending: <i>known once you close the month</i>")
-    if s.get("fxRatesUsingDefaults"):
-        lines.append("\nℹ️ FX rates use built-in defaults — set real rates in Settings.")
+        lines.append(t(chat_id, "months.everydayPending"))
     rows = []
     if not closed:
-        rows.append([("🔒 Close this month", "months:close")])
-    rows.append([("📜 History", "months:history")])
-    rows.append([("⬅️ Menu", "menu:home")])
+        rows.append([(t(chat_id, "months.closeThisMonth"), "months:close")])
+    rows.append([(t(chat_id, "months.historyBtn"), "months:history")])
+    rows.append([(t(chat_id, "common.menu"), "menu:home")])
     await cb.message.edit_text("\n".join(lines), reply_markup=ikb(rows))
 
 
@@ -88,19 +86,19 @@ async def show_history(cb: CallbackQuery) -> None:
     try:
         rows = await api.request(chat_id, "GET", "/months") or []
     except api.NeedsLogin:
-        await cb.message.edit_text("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        await cb.message.edit_text(t(chat_id, "common.sessionExpired"), reply_markup=keyboards.login_kb(chat_id))
         return
     except Exception:  # noqa: BLE001
-        await cb.message.edit_text("❌ Couldn't load history.", reply_markup=_back_kb())
+        await cb.message.edit_text(t(chat_id, "months.historyLoadError"), reply_markup=_back_kb(chat_id))
         return
-    lines = ["📜 <b>Closed months</b> · UZS\n"]
+    lines = [t(chat_id, "months.historyTitle", currency=CURRENCY)]
     if not rows:
-        lines.append("No months closed yet.")
+        lines.append(t(chat_id, "months.noneClosedYet"))
     for m in rows[:24]:
-        lines.append(
-            f"• <b>{esc(m.get('month'))}</b>: earned {fmt_money(m.get('income'), 'UZS')} · "
-            f"spent {fmt_money(m.get('totalSpent'), 'UZS')} · left {fmt_money(m.get('leftover'), 'UZS')}")
-    await cb.message.edit_text("\n".join(lines), reply_markup=_back_kb())
+        lines.append("• " + t(
+            chat_id, "months.historyLine", month=esc(m.get('month')), earned=fmt_money(m.get('income')),
+            spent=fmt_money(m.get('totalSpent')), left=fmt_money(m.get('leftover'))))
+    await cb.message.edit_text("\n".join(lines), reply_markup=_back_kb(chat_id))
 
 
 @router.callback_query(F.data == "months:summary")
@@ -124,26 +122,27 @@ async def on_history(cb: CallbackQuery) -> None:
 @router.callback_query(F.data == "months:close")
 async def close_start(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
+    if not await common.stable_income_set(cb):
+        return
     if not await common.gate(cb):
         return
     chat_id = cb.message.chat.id
-    cur = store.currency(chat_id)
     month = _month_now()
     try:
-        p = await api.request(chat_id, "GET", "/months/preview", params={"month": month, "currency": cur})
+        p = await api.request(chat_id, "GET", "/months/preview", params={"month": month, "currency": CURRENCY})
     except api.NeedsLogin:
-        await cb.message.edit_text("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        await cb.message.edit_text(t(chat_id, "common.sessionExpired"), reply_markup=keyboards.login_kb(chat_id))
         return
     except Exception:  # noqa: BLE001
-        await cb.message.edit_text("❌ Couldn't load the close preview.", reply_markup=_back_kb())
+        await cb.message.edit_text(t(chat_id, "months.closePreviewError"), reply_markup=_back_kb(chat_id))
         return
     if not p.get("closeable"):
-        reason = p.get("blockedReason") or "This month can't be closed yet."
-        await cb.message.edit_text(f"🔒 {esc(reason)}", reply_markup=_back_kb())
+        reason = p.get("blockedReason") or t(chat_id, "months.cantCloseYet")
+        await cb.message.edit_text(f"🔒 {esc(reason)}", reply_markup=_back_kb(chat_id))
         return
     wallets = p.get("wallets") or []
     if not wallets:
-        await cb.message.edit_text("No wallets to reconcile for this month.", reply_markup=_back_kb())
+        await cb.message.edit_text(t(chat_id, "months.noWallets"), reply_markup=_back_kb(chat_id))
         return
     await state.set_state(CloseMonth.balance)
     await state.update_data(mc_month=month, mc_wallets=wallets, mc_index=0, mc_entered=[])
@@ -151,20 +150,17 @@ async def close_start(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _mc_prompt(event, state: FSMContext) -> None:
+    chat_id = common.chat_id_of(event)
     d = await state.get_data()
     wallets, idx = d["mc_wallets"], d["mc_index"]
     w = wallets[idx]
-    wcur = w.get("currency")
     computed = w.get("computedBalance")
-    head = f"🔒 <b>Close {d['mc_month']}</b> · wallet {idx + 1}/{len(wallets)}"
-    body = (
-        f"<b>{esc(w.get('label'))}</b>\n"
-        f"App computed: {fmt_money(computed, wcur)}\n\n"
-        f"Send this wallet's <b>real balance</b> at month-end (in {wcur}):")
+    head = t(chat_id, "months.closeHeader", month=d['mc_month'], index=idx + 1, total=len(wallets))
+    body = t(chat_id, "months.walletPrompt", label=esc(w.get('label')), computed=fmt_money(computed), currency=CURRENCY)
     rows = []
     if computed is not None:
-        rows.append([(f"Use {fmt_money(computed, wcur)}", "mc:use")])
-    rows.append([("✖️ Cancel", "mc:cancel")])
+        rows.append([(t(chat_id, "months.useComputed", amount=fmt_money(computed)), "mc:use")])
+    rows.append([(t(chat_id, "common.cancel"), "mc:cancel")])
     await common.show(event, f"{head}\n{body}", ikb(rows))
 
 
@@ -199,53 +195,55 @@ async def mc_use(cb: CallbackQuery, state: FSMContext) -> None:
 async def mc_balance(message: Message, state: FSMContext) -> None:
     val = _num(message.text)
     if val is None:
-        await message.answer("Send a number (e.g. 0 or 250000).")
+        await message.answer(t(message.chat.id, "common.sendNumberExample"))
         return
     await _mc_record(message, state, val)
 
 
 async def _mc_confirm(event, state: FSMContext) -> None:
+    chat_id = common.chat_id_of(event)
     d = await state.get_data()
     wallets = d["mc_wallets"]
-    lines = [f"🔒 <b>Confirm closing {d['mc_month']}</b>", "", "Real balances entered:"]
+    lines = [t(chat_id, "months.confirmCloseHeader", month=d['mc_month']), "", t(chat_id, "months.realBalancesEntered")]
     for i, e in enumerate(d["mc_entered"]):
         label = wallets[i].get("label") if i < len(wallets) else e["walletType"]
-        lines.append(f"• {esc(label)}: {fmt_money(e['enteredBalance'], e['currency'])}")
-    lines.append("\n⚠️ This is <b>permanent</b> — the month locks and can't be reopened.")
+        lines.append(f"• {esc(label)}: {fmt_money(e['enteredBalance'])}")
+    lines.append(t(chat_id, "months.permanentWarning"))
     await state.set_state(CloseMonth.confirm)
     await common.show(event, "\n".join(lines),
-                      ikb([[("✅ Confirm close", "mc:ok")], [("✖️ Cancel", "mc:cancel")]]))
+                      ikb([[(t(chat_id, "months.confirmClose"), "mc:ok")], [(t(chat_id, "common.cancel"), "mc:cancel")]]))
 
 
 @router.callback_query(StateFilter(CloseMonth.confirm), F.data == "mc:ok")
 async def mc_ok(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
+    chat_id = cb.message.chat.id
     d = await state.get_data()
     payload = {"month": d["mc_month"], "wallets": d["mc_entered"]}
     try:
-        res = await api.request(cb.message.chat.id, "POST", "/months/close", json=payload)
+        res = await api.request(chat_id, "POST", "/months/close", json=payload)
     except api.NeedsLogin:
         await state.clear()
-        await cb.message.edit_text("🔒 Session expired. Please log in.", reply_markup=keyboards.login_kb())
+        await cb.message.edit_text(t(chat_id, "common.sessionExpired"), reply_markup=keyboards.login_kb(chat_id))
         return
     except api.ApiError as exc:
         await state.clear()
-        await cb.message.edit_text(f"❌ {esc(exc.message)}", reply_markup=_back_kb())
+        await cb.message.edit_text(f"❌ {esc(exc.message)}", reply_markup=_back_kb(chat_id))
         return
     except Exception:  # noqa: BLE001
         await state.clear()
-        await cb.message.edit_text("❌ Couldn't reach the server.", reply_markup=_back_kb())
+        await cb.message.edit_text(t(chat_id, "common.serverUnreachable"), reply_markup=_back_kb(chat_id))
         return
     await state.clear()
     res = res or {}
     lines = [
-        f"✅ <b>{esc(res.get('month', d['mc_month']))} closed.</b> (UZS)",
-        f"📈 Earned: {fmt_money(res.get('income'), 'UZS')}",
-        f"📉 Spent: {fmt_money(res.get('totalSpent'), 'UZS')}",
-        f"🧹 Everyday: {fmt_money(res.get('everydaySpend'), 'UZS')}",
-        f"💰 Left → next month: {fmt_money(res.get('leftover'), 'UZS')}",
+        t(chat_id, "months.closedResultTitle", month=esc(res.get('month', d['mc_month'])), currency=CURRENCY),
+        t(chat_id, "months.resultEarned", amount=fmt_money(res.get('income'))),
+        t(chat_id, "months.resultSpent", amount=fmt_money(res.get('totalSpent'))),
+        t(chat_id, "months.resultEveryday", amount=fmt_money(res.get('everydaySpend'))),
+        t(chat_id, "months.resultLeftover", amount=fmt_money(res.get('leftover'))),
     ]
-    await cb.message.edit_text("\n".join(lines), reply_markup=_back_kb())
+    await cb.message.edit_text("\n".join(lines), reply_markup=_back_kb(chat_id))
 
 
 @router.callback_query(F.data == "mc:cancel")

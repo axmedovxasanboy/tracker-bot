@@ -3,6 +3,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, TelegramObject
 
 from . import keyboards
+from .i18n import t
 from .session import store
 
 
@@ -25,9 +26,36 @@ async def show(event: TelegramObject, text: str, kb: InlineKeyboardMarkup | None
 
 async def gate(event: TelegramObject) -> bool:
     """Return True if the chat has an active session; otherwise prompt to log in."""
-    if store.is_active(chat_id_of(event)):
+    chat_id = chat_id_of(event)
+    if store.is_active(chat_id):
         return True
     if isinstance(event, CallbackQuery):
         await event.answer()
-    await show(event, "🔒 Session expired. Please log in.", keyboards.login_kb())
+    await show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
     return False
+
+
+async def stable_income_set(event) -> bool:
+    """False (and shows a message) when Settings has no monthly stable income.
+
+    The backend refuses every money-writing call until it is set, so each write flow checks
+    up front rather than walking the user through a whole form only to reject it at the end.
+    On any lookup failure this returns True and lets the backend be the authority.
+    """
+    from . import api
+    chat_id = chat_id_of(event)
+    try:
+        s = await api.request(chat_id, "GET", "/settings") or {}
+    except api.NeedsLogin:
+        await show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return False
+    except Exception:  # noqa: BLE001
+        return True
+    income = s.get("monthlyStableIncome")
+    if income is None or float(income) <= 0:
+        await show(
+            event,
+            f"{t(chat_id, 'guard.incomeTitle')}\n\n{t(chat_id, 'guard.incomeBody')}",
+            keyboards.back_menu_kb(chat_id))
+        return False
+    return True

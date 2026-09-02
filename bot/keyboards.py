@@ -1,36 +1,33 @@
 """Inline keyboards + formatting helpers (HTML is the bot's default parse mode)."""
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from .config import CURRENCIES
 from .runtime import runtime
 
+# (page key, i18n key) pairs for the main menu grid
 PAGES = [
-    ("dashboard", "📊 Dashboard"),
-    ("overview", "🎯 Overview"),
-    ("months", "🗓 Months"),
-    ("transactions", "💸 Transactions"),
-    ("cards", "💳 Cards"),
-    ("finance", "🏦 Finance"),
-    ("categories", "🏷 Categories"),
-    ("settings", "⚙️ Settings"),
+    ("dashboard", "menu.page.dashboard"),
+    ("overview", "menu.page.overview"),
+    ("months", "menu.page.months"),
+    ("transactions", "menu.page.transactions"),
+    ("cards", "menu.page.cards"),
+    ("finance", "menu.page.finance"),
+    ("categories", "menu.page.categories"),
+    ("settings", "menu.page.settings"),
 ]
-
-MENU_TEXT = "🏠 <b>Tracker</b> — main menu\nPick a section:"
 
 
 def esc(value) -> str:
     return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def fmt_money(amount, currency: str = "UZS") -> str:
+def fmt_money(amount) -> str:
     if amount is None:
         return "—"
     try:
         n = float(amount)
     except (TypeError, ValueError):
         return esc(amount)
-    decimals = 0 if currency == "UZS" else 2
-    return f"{n:,.{decimals}f} {currency}"
+    return f"{n:,.0f} UZS"
 
 
 def fmt_pct(value) -> str:
@@ -49,28 +46,52 @@ def ikb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
     ])
 
 
-def main_menu_kb() -> InlineKeyboardMarkup:
+def menu_text(chat_id: int | None = None) -> str:
+    from .i18n import t
+    return t(chat_id, "menu.homeText")
+
+
+def main_menu_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
+    from .i18n import t
     keyboard: list[list[InlineKeyboardButton]] = []
     # A Web App "Open App" button when a valid HTTPS web-view URL is configured. Telegram
     # rejects non-HTTPS web_app URLs, so skip it for http/localhost to avoid send errors.
     url = runtime.web_view_url
     if url and url.startswith("https://"):
-        keyboard.append([InlineKeyboardButton(text="🚀 Open App", web_app=WebAppInfo(url=url))])
+        keyboard.append([InlineKeyboardButton(text=t(chat_id, "menu.openApp"), web_app=WebAppInfo(url=url))])
     for i in range(0, len(PAGES), 2):
-        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"menu:{key}")
-                         for key, label in PAGES[i:i + 2]])
-    keyboard.append([InlineKeyboardButton(text="🔒 Lock", callback_data="lock")])
+        keyboard.append([InlineKeyboardButton(text=t(chat_id, key), callback_data=f"menu:{page}")
+                         for page, key in PAGES[i:i + 2]])
+    keyboard.append([InlineKeyboardButton(text=t(chat_id, "menu.lock"), callback_data="lock")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def login_kb() -> InlineKeyboardMarkup:
-    return ikb([[("🔑 Log in", "auth:login")]])
+def login_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
+    from .i18n import t
+    return ikb([[(t(chat_id, "auth.loginButton"), "auth:login")]])
 
 
-def back_menu_kb() -> InlineKeyboardMarkup:
-    return ikb([[("⬅️ Menu", "menu:home")]])
+def back_menu_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
+    from .i18n import t
+    return ikb([[(t(chat_id, "common.menu"), "menu:home")]])
 
 
-def currency_kb(current: str) -> InlineKeyboardMarkup:
-    row = [(("✅ " if c == current else "") + c, f"setcur:{c}") for c in CURRENCIES]
-    return ikb([row, [("🗑 Clear everything", "reset:start")], [("⬅️ Menu", "menu:home")]])
+def settings_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
+    from .i18n import t
+    return ikb([
+        [(t(chat_id, "settings.language"), "lang:open")],
+        [(t(chat_id, "menu.clearEverything"), "reset:start")],
+        [(t(chat_id, "common.menu"), "menu:home")],
+    ])
+
+
+def language_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
+    """The two language choices, marking the active one."""
+    from .i18n import get_lang, t
+    cur = get_lang(chat_id)
+    mark = lambda code, label: ("✅ " + label) if cur == code else label
+    return ikb([
+        [(mark("en", "English"), "lang:set:en")],
+        [(mark("uz", "Oʻzbek"), "lang:set:uz")],
+        [(t(chat_id, "common.menu"), "menu:settings")],
+    ])

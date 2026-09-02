@@ -2,7 +2,8 @@
 
 A native Telegram client for the Tracker API, built with **aiogram v3**. The bot logs into the
 Spring Boot backend with your account and drives everything through inline-button menus
-mirroring the web app's 7 pages.
+mirroring the web app's 7 pages. The bot is UZS-only — every amount is entered and displayed in
+UZS, with no currency selection.
 
 ## Structure
 
@@ -13,7 +14,7 @@ tracker-telegram-bot/
 ├── .env.example
 └── bot/
     ├── config.py         # env settings
-    ├── session.py        # in-memory sessions (24h TTL + /lock) + currency prefs + store singleton
+    ├── session.py        # in-memory sessions (24h TTL + /lock) + store singleton
     ├── api.py            # httpx API client: auth + request() with 401→refresh
     ├── keyboards.py      # inline keyboards + money/percent formatting
     ├── common.py         # show() (edit-or-send) + gate() (auth guard)
@@ -22,7 +23,7 @@ tracker-telegram-bot/
     ├── main.py           # Dispatcher + router wiring + webhook (aiohttp) server
     └── routers/
         ├── auth.py       # /start, typed login/signup, /lock, /menu, /cancel
-        ├── menu.py       # main menu, Dashboard, Overview, Settings (currency)
+        ├── menu.py       # main menu, Dashboard, Overview, Settings
         ├── wizard.py     # generic field-stepper create flow (shared)
         ├── transactions.py
         ├── finance.py
@@ -33,10 +34,10 @@ tracker-telegram-bot/
 ## Features
 
 - Typed **login / signup** (auto-detects first-run signup vs login), **24h session**, `/lock`.
-- **Dashboard**, **Overview** (tier + allocation), **Settings** (currency → display + default).
+- **Dashboard**, **Overview** (tier + allocation), **Settings**.
 - **Transactions**: add (guided), recent + delete, exchange, bulk add.
 - **Finance**: read views for all 7 sections, repay / mark-returned / pay, and create.
-- **Cards**: list, view, delete, add; per-currency **cash balances** (set/upsert).
+- **Cards**: list, view, delete, add; **cash balances** (set/upsert).
 - **Categories**: two-level list, add (root/sub + bonus-income flag), delete.
 
 ## Setup & run
@@ -81,7 +82,6 @@ secret the server verifies on every update. **To stop all Telegram traffic, stop
 | `BOT_TOKEN`        | —                                | Bot token from @BotFather (required)      |
 | `API_BASE_URL`     | `http://localhost:8080/api/v1`   | Tracker backend base URL                  |
 | `SESSION_TTL_HOURS`| `24`                             | Hours before re-login is required         |
-| `DEFAULT_CURRENCY` | `UZS`                            | Starting currency until changed           |
 | `WEBHOOK_HOST`     | `0.0.0.0`                        | Local aiohttp bind host                   |
 | `WEBHOOK_PORT`     | `8081`                           | Local aiohttp bind port                   |
 | `WEBHOOK_PATH`     | `/webhook`                       | Fallback path if the public URL has none  |

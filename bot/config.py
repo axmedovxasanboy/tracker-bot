@@ -9,8 +9,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080/api/v1").strip().rstrip("/")
 SESSION_TTL_HOURS = float(os.environ.get("SESSION_TTL_HOURS", "24"))
 REQUEST_TIMEOUT = float(os.environ.get("API_TIMEOUT", "10"))
-DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "UZS").strip().upper()
-CURRENCIES = ("UZS", "USD", "EUR")
+# The bot is UZS-only (multi-currency/FX support was removed). The backend's Currency enum
+# accepts only "UZS", but request payloads still carry the field, so this constant is stamped
+# into every outgoing "currency" key.
+CURRENCY = "UZS"
 
 # --- Webhook (the bot runs an aiohttp server; Telegram pushes updates to it) ---
 # The PUBLIC webhook URL + the web-view URL are NOT set here — they live in the backend

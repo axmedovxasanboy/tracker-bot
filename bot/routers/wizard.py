@@ -5,6 +5,10 @@ and the final POST. Spec is stored in FSM memory (objects kept as-is, no seriali
 
 spec = {title, endpoint, back (callback_data), success, auto_currency, fields:[{key,label,kind,...}]}
 kinds: text(+regex/regex_msg) | amount(>0) | number(any) | int(+min/max) | date(+today) | month | choice(choices=[(value,label)]) | bool(+yes_label/no_label → True/False)
+
+`title`, `success`, each field's `label`, `choices` labels and `yes_label`/`no_label` are all
+i18n KEYS (looked up with `t()` at render time), not raw text — this is what lets one spec
+serve every chat's language.
 """
 import datetime as dt
 import re
@@ -15,8 +19,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from .. import api, common, keyboards
+from ..config import CURRENCY
+from ..i18n import t
 from ..keyboards import esc, ikb
-from ..session import store
 from ..states import Wizard
 
 router = Router()
@@ -50,38 +55,39 @@ async def start(event, state: FSMContext, spec: dict) -> None:
 
 
 async def _prompt(event, state: FSMContext) -> None:
+    chat_id = common.chat_id_of(event)
     d = await state.get_data()
     spec, idx = d["w_spec"], d["w_index"]
     field = spec["fields"][idx]
-    cur = store.currency(common.chat_id_of(event))
-    head = f"➕ <b>{spec['title']}</b> · step {idx + 1}/{len(spec['fields'])}"
+    head = t(chat_id, "wizard.stepHeader", title=t(chat_id, spec["title"]), index=idx + 1, total=len(spec["fields"]))
     kind = field["kind"]
+    label = t(chat_id, field["label"])
     rows = []
     if kind == "amount":
-        body = f"Send <b>{field['label']}</b> in {cur}:"
+        body = t(chat_id, "wizard.amountPrompt", label=label, currency=CURRENCY)
     elif kind == "number":
-        body = f"Send <b>{field['label']}</b> in {cur} (0 or more):"
+        body = t(chat_id, "wizard.numberPrompt", label=label, currency=CURRENCY)
     elif kind == "int":
-        body = f"Send <b>{field['label']}</b> (a number):"
+        body = t(chat_id, "wizard.intPrompt", label=label)
     elif kind == "date":
-        body = f"Send <b>{field['label']}</b> as YYYY-MM-DD:"
+        body = t(chat_id, "wizard.datePrompt", label=label)
         if field.get("today"):
-            rows.append([("📅 Today", "wtoday")])
+            rows.append([(t(chat_id, "common.today"), "wtoday")])
     elif kind == "month":
-        body = f"Send <b>{field['label']}</b> as YYYY-MM:"
+        body = t(chat_id, "wizard.monthPrompt", label=label)
     elif kind == "choice":
-        body = f"Pick <b>{field['label']}</b>:"
-        for value, label in field["choices"]:
-            rows.append([(label, f"wchoice:{value}")])
+        body = t(chat_id, "wizard.choicePrompt", label=label)
+        for value, choice_key in field["choices"]:
+            rows.append([(t(chat_id, choice_key), f"wchoice:{value}")])
     elif kind == "bool":
-        body = f"<b>{field['label']}</b>"
-        rows.append([(field.get("yes_label", "✅ Yes"), "wbool:1")])
-        rows.append([(field.get("no_label", "❌ No"), "wbool:0")])
+        body = f"<b>{label}</b>"
+        rows.append([(t(chat_id, field.get("yes_label", "wizard.yesDefault")), "wbool:1")])
+        rows.append([(t(chat_id, field.get("no_label", "wizard.noDefault")), "wbool:0")])
     else:
-        body = f"Send <b>{field['label']}</b>:"
+        body = t(chat_id, "wizard.textPrompt", label=label)
     if not field.get("required"):
-        rows.append([("⏭ Skip", "wskip")])
-    rows.append([("✖️ Cancel", "wcancel")])
+        rows.append([(t(chat_id, "common.skip"), "wskip")])
+    rows.append([(t(chat_id, "common.cancel"), "wcancel")])
     await common.show(event, f"{head}\n{body}", ikb(rows))
 
 
@@ -124,6 +130,7 @@ async def on_bool(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(StateFilter(Wizard.step))
 async def on_text(message: Message, state: FSMContext) -> None:
+    chat_id = message.chat.id
     d = await state.get_data()
     field = d["w_spec"]["fields"][d["w_index"]]
     raw = (message.text or "").strip()
@@ -131,43 +138,43 @@ async def on_text(message: Message, state: FSMContext) -> None:
     if kind == "amount":
         val = _amount_pos(raw)
         if val is None:
-            await message.answer("Send a positive number.")
+            await message.answer(t(chat_id, "common.positiveNumber"))
             return
     elif kind == "number":
         val = _number(raw)
         if val is None:
-            await message.answer("Send a number (e.g. 0 or 250000).")
+            await message.answer(t(chat_id, "common.sendNumberExample"))
             return
     elif kind == "int":
         try:
             val = int(raw)
         except ValueError:
-            await message.answer("Send a whole number.")
+            await message.answer(t(chat_id, "wizard.wholeNumber"))
             return
         if (field.get("min") is not None and val < field["min"]) or \
            (field.get("max") is not None and val > field["max"]):
-            await message.answer(f"Enter a number between {field.get('min')} and {field.get('max')}.")
+            await message.answer(t(chat_id, "wizard.numberRange", min=field.get('min'), max=field.get('max')))
             return
     elif kind == "date":
         try:
             dt.date.fromisoformat(raw)
         except ValueError:
-            await message.answer("Use the format YYYY-MM-DD.")
+            await message.answer(t(chat_id, "wizard.dateFormat"))
             return
         val = raw
     elif kind == "month":
         try:
             dt.date.fromisoformat(raw + "-01")
         except ValueError:
-            await message.answer("Use the format YYYY-MM.")
+            await message.answer(t(chat_id, "wizard.monthFormat"))
             return
         val = raw + "-01"
     elif kind == "choice" or kind == "bool":
-        await message.answer("Please tap one of the buttons.")
+        await message.answer(t(chat_id, "wizard.tapButton"))
         return
     else:
         if field.get("regex") and not re.match(field["regex"], raw):
-            await message.answer(field.get("regex_msg", "Invalid format."))
+            await message.answer(t(chat_id, field.get("regex_msg", "wizard.invalidFormat")))
             return
         val = raw
     await _set(state, field["key"], val)
@@ -192,13 +199,13 @@ async def _finish(event, state: FSMContext) -> None:
     if spec.get("fixed"):
         payload.update(spec["fixed"])  # constant fields the user isn't prompted for (e.g. savingsGoal=true)
     if spec.get("auto_currency"):
-        payload["currency"] = store.currency(chat_id)
-    back_kb = ikb([[("⬅️ Back", spec["back"])]])
+        payload["currency"] = CURRENCY
+    back_kb = ikb([[(t(chat_id, "common.back"), spec["back"])]])
     try:
         await api.request(chat_id, "POST", spec["endpoint"], json=payload)
     except api.NeedsLogin:
         await state.clear()
-        await common.show(event, "🔒 Session expired. Please log in.", keyboards.login_kb())
+        await common.show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
         return
     except api.ApiError as exc:
         await state.clear()
@@ -206,16 +213,17 @@ async def _finish(event, state: FSMContext) -> None:
         return
     except Exception:  # noqa: BLE001
         await state.clear()
-        await common.show(event, "❌ Couldn't reach the server.", back_kb)
+        await common.show(event, t(chat_id, "common.serverUnreachable"), back_kb)
         return
     await state.clear()
-    await common.show(event, f"✅ {spec.get('success', 'Saved.')}", back_kb)
+    await common.show(event, f"✅ {t(chat_id, spec.get('success', 'wizard.savedDefault'))}", back_kb)
 
 
 @router.callback_query(StateFilter(Wizard.step), F.data == "wcancel")
 async def cancel(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
+    chat_id = cb.message.chat.id
     d = await state.get_data()
     back = (d.get("w_spec") or {}).get("back", "menu:home")
     await state.clear()
-    await cb.message.edit_text("Cancelled.", reply_markup=ikb([[("⬅️ Back", back)]]))
+    await cb.message.edit_text(t(chat_id, "common.cancelled"), reply_markup=ikb([[(t(chat_id, "common.back"), back)]]))

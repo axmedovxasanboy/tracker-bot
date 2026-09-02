@@ -11,17 +11,10 @@ class AddTx(StatesGroup):
     type = State()
     amount = State()
     category = State()
+    subtype = State()
     source = State()
     date = State()
     desc = State()
-    confirm = State()
-
-
-class Exchange(StatesGroup):
-    src = State()
-    src_amt = State()
-    dst = State()
-    dst_amt = State()
     confirm = State()
 
 

@@ -66,7 +66,6 @@ services:
       WEBHOOK_PATH: /webhook
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       SESSION_TTL_HOURS: 24
-      DEFAULT_CURRENCY: UZS
     networks:
       - app-network
     depends_on:
@@ -109,7 +108,6 @@ cd ~/app && docker compose restart bot
 | `WEBHOOK_SECRET`    | rec.     | Telegram echoes it back; the server rejects mismatches |
 | `SESSION_TTL_HOURS` | no       | Default 24                                           |
 | `API_TIMEOUT`       | no       | Default 10s                                          |
-| `DEFAULT_CURRENCY`  | no       | Default `UZS`                                        |
 | `WEBHOOK_HOST`      | no       | Default `0.0.0.0`                                    |
 | `WEBHOOK_PORT`      | no       | Default `8081` (must match `EXPOSE` + Caddy upstream)|
 | `WEBHOOK_PATH`      | no       | Default `/webhook`; overridden by the public URL's path if it has one |
