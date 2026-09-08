@@ -1,29 +1,121 @@
-"""Environment-backed settings."""
+"""Environment-backed settings, read once at import and validated here.
+
+Parsing lives in this one module on purpose. The bot is deployed by editing a `.env` on a
+VPS and running `docker compose up -d`, so a typo goes straight to production; parsed at the
+call site it would surface either as a wrong default nobody notices or as a ValueError
+inside a handler — and aiogram runs handlers in a detached task, so that traceback dies in
+the log with the user staring at a spinning button. A bad value here stops the boot instead,
+with one sentence naming the variable and what it wants.
+
+`LOG_LEVEL` is deliberately absent: run.py reads it directly, before this module is
+imported, so that the failures above are themselves formatted and logged.
+"""
 import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080/api/v1").strip().rstrip("/")
-SESSION_TTL_HOURS = float(os.environ.get("SESSION_TTL_HOURS", "24"))
-REQUEST_TIMEOUT = float(os.environ.get("API_TIMEOUT", "10"))
+
+def _raw(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _bad(name: str, raw: str, wants: str) -> SystemExit:
+    # SystemExit, not ValueError: run.py logs the message and exits non-zero, so `docker logs`
+    # shows one actionable line rather than a traceback through dotenv's internals.
+    return SystemExit(f"{name}={raw!r} is invalid — {wants}. Fix it in .env and restart.")
+
+
+def _number(name: str, default: str, *, low: float, high: float) -> float:
+    raw = _raw(name) or default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise _bad(name, raw, f"expected a number between {low} and {high}") from None
+    if not low <= value <= high:
+        raise _bad(name, raw, f"expected a number between {low} and {high}")
+    return value
+
+
+def _int(name: str, default: str, *, low: int, high: int) -> int:
+    raw = _raw(name) or default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise _bad(name, raw, f"expected a whole number between {low} and {high}") from None
+    if not low <= value <= high:
+        raise _bad(name, raw, f"expected a whole number between {low} and {high}")
+    return value
+
+
+def _bool(name: str, default: bool) -> bool:
+    raw = _raw(name).lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise _bad(name, raw, "expected true or false")
+
+
+BOT_TOKEN = _raw("BOT_TOKEN")
+API_BASE_URL = _raw("API_BASE_URL", "http://localhost:8080/api/v1").rstrip("/")
+# httpx rejects a schemeless base URL with "Request URL is missing an 'http://' or 'https://'
+# protocol", which main.py then reports as "Couldn't read Telegram config from the backend" —
+# i.e. it sends the owner to check the backend when the fault is one missing word in .env.
+if not API_BASE_URL.startswith(("http://", "https://")):
+    raise _bad("API_BASE_URL", API_BASE_URL,
+               "expected an absolute URL, e.g. http://backend:8080/api/v1")
+
+SESSION_TTL_HOURS = _number("SESSION_TTL_HOURS", "24", low=0.05, high=8760)
+REQUEST_TIMEOUT = _number("API_TIMEOUT", "10", low=1, high=300)
 # The bot is UZS-only (multi-currency/FX support was removed). The backend's Currency enum
 # accepts only "UZS", but request payloads still carry the field, so this constant is stamped
 # into every outgoing "currency" key.
 CURRENCY = "UZS"
 
+# --- Time (see bot/clock.py) ---
+# Hours ahead of UTC the owner lives in. Tashkent is UTC+5 and Uzbekistan abolished DST in
+# 1995, so a fixed offset is the whole rule — no zoneinfo lookup, no tzdata in the image.
+# This is NOT the container's TZ variable: TZ only decides how the OS renders local time,
+# while every date the bot writes to the API comes from this offset.
+TZ_OFFSET_HOURS = _number("TZ_OFFSET_HOURS", "5", low=-12, high=14)
+
+# --- Access control ---
+# Tracker is single-user. When this is set, only that chat is served; when it is not, the
+# first chat to log in successfully claims the bot for the life of the process. Pin it here
+# once you know it — the bound id is logged at INFO. 0 reads as unset; no chat has id 0.
+_owner = _raw("OWNER_CHAT_ID")
+try:
+    OWNER_CHAT_ID: int | None = (int(_owner) or None) if _owner else None
+except ValueError:
+    raise _bad("OWNER_CHAT_ID", _owner,
+               "expected a numeric Telegram chat id (@userinfobot will tell you yours)") from None
+
+# --- Reminders (opt-in) ---
+# Off by default: a reminder is an unprompted message, and the bot must know whose chat to
+# send it to before it sends anything at all (see OWNER_CHAT_ID).
+REMINDERS_ENABLED = _bool("REMINDERS_ENABLED", False)
+# Local hour (in TZ_OFFSET_HOURS terms, not UTC) reminders are delivered at.
+REMINDER_HOUR = _int("REMINDER_HOUR", "21", low=0, high=23)
+
 # --- Webhook (the bot runs an aiohttp server; Telegram pushes updates to it) ---
 # The PUBLIC webhook URL + the web-view URL are NOT set here — they live in the backend
 # (Settings → Developer page) and are fetched at startup via GET /settings/telegram.
 # These env vars only control the LOCAL aiohttp server bind + the shared secret.
-WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "0.0.0.0").strip()
-WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8081"))
+WEBHOOK_HOST = _raw("WEBHOOK_HOST", "0.0.0.0")
+WEBHOOK_PORT = _int("WEBHOOK_PORT", "8081", low=1, high=65535)
 # Fallback path the aiohttp server listens on. If the configured public webhook URL has a
 # path, that path is used instead (so the two can't drift). Default keeps things working
 # when the public URL is just a host.
-WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH", "/webhook").strip() or "/webhook"
-# Telegram echoes this in the X-Telegram-Bot-Api-Secret-Token header; the server rejects
-# mismatches. Leave blank to disable the check (fine for local testing).
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
+WEBHOOK_PATH = _raw("WEBHOOK_PATH", "/webhook") or "/webhook"
+if not WEBHOOK_PATH.startswith("/"):
+    # aiohttp's UrlDispatcher raises on a relative path; repairing it beats failing the boot
+    # over a missing slash the owner cannot see in the error.
+    WEBHOOK_PATH = "/" + WEBHOOK_PATH
+# Telegram echoes this in the X-Telegram-Bot-Api-Secret-Token header. REQUIRED in production:
+# aiogram's verify_secret returns True unconditionally when it is blank, so an empty secret
+# means anyone who learns the public URL can POST forged updates to the bot.
+WEBHOOK_SECRET = _raw("WEBHOOK_SECRET")

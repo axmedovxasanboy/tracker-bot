@@ -1,0 +1,204 @@
+"""The front door and the one unprompted message the bot sends.
+
+`auth.*`
+
+`auth.accountCreated` / `auth.loggedIn` are the two halves of `auth.loginSuccess`'s {verb}.
+They are fragments on purpose and the two languages put them in different places in the
+sentence — which is exactly why they are separate keys and not concatenated at the call site.
+
+`auth.err.*` are the backend's own authentication sentences, translated. The backend answers
+in English prose and gives no code to key off, so `bot/routers/auth.py` matches the exact
+sentence; when the wording on the Java side changes the bot falls back to printing it
+verbatim, which is what it did for all four before.
+
+`auth.remind.*` belong to `bot/reminders.py`. They live here because reminders.py has no i18n
+module of its own — the namespace guard in `bot/i18n/__init__.py` allows exactly one prefix
+per module, and both files have the same owner.
+"""
+
+EN: dict[str, str] = {
+    # ── The welcome screen ──────────────────────────────────────────────────
+    "auth.loginButton": "🔑 Log in",
+    "auth.setupButton": "🆕 Set this bot up",
+    # Honest about what this is. Tracker is one person's account — there is no "sign up and
+    # get your own copy" here — and the guard in bot/middlewares.py enforces exactly that, so
+    # the welcome screen should not read like an invitation to the world.
+    "auth.welcome": (
+        "👋 <b>Tracker</b> — one person's money, in one chat.\n\n"
+        "This bot serves a single account: its income, subscriptions, wallets and the monthly "
+        "envelope built on them. Log in with that account to continue."
+    ),
+    "auth.welcomeFirstRun": (
+        "👋 <b>Tracker</b> — one person's money, in one chat.\n\n"
+        "No account exists yet, so the next username and password typed here <b>create</b> it, "
+        "and this chat becomes its owner for good. If you did not set this bot up, close it and "
+        "tell whoever did.\n\n"
+        "The password must be at least 6 characters."
+    ),
+    "auth.pleaseLoginFirst": "🔒 Please log in first.",
+
+    # ── The typed flow ──────────────────────────────────────────────────────
+    "auth.enterUsername": "👤 Enter your <b>username</b>:",
+    "auth.enterPassword": "🔑 Now enter your <b>password</b>:",
+    "auth.chooseUsername": "👤 Pick a <b>username</b> for the new account:",
+    "auth.choosePassword": "🔑 Now pick a <b>password</b> — at least 6 characters:",
+    "auth.usernameNeeded": "👤 Send your username as plain text.",
+    "auth.passwordNeeded": "🔑 Send your password as plain text.",
+    "auth.commandDuringLogin": (
+        "🤔 <code>/{cmd}</code> isn't a command I know, and you're in the middle of logging in — "
+        "so I haven't taken it as your username or password. Answer the question above, or tap "
+        "Cancel."
+    ),
+    "auth.accountCreated": "Account created",
+    "auth.loggedIn": "Logged in",
+    "auth.loginSuccess": "✅ {verb} as <b>{username}</b>. Session lasts 24h (or until /lock).",
+    "auth.setIncomeNext": (
+        "Nothing can be recorded yet: every money-writing screen is refused until your monthly "
+        "stable income is set, because your tier and every allocation figure are worked out from "
+        "it. Set it now and the rest of the bot opens up."
+    ),
+    "auth.tryAgain": "Tap /login to try again.",
+    "auth.serverUnreachable": "❌ Couldn't reach the server. Is the backend running?",
+    "auth.locked": "🔒 Locked. You'll need to log in again.",
+    "auth.lockedToast": "Locked",
+
+    # ── The backend's own authentication sentences ──────────────────────────
+    "auth.err.invalidCredentials": "❌ Wrong username or password.",
+    "auth.err.passwordTooShort": "❌ The password must be at least 6 characters.",
+    "auth.err.usernameRequired": "❌ A username is required.",
+    "auth.err.accountExists": "❌ An account already exists — log in with it instead.",
+
+    # ── The password message ────────────────────────────────────────────────
+    "auth.passwordNotDeleted": (
+        "⚠️ I couldn't delete the message you typed your password into, so it is still sitting "
+        "in this chat's history. Delete it yourself — long-press it → Delete."
+    ),
+
+    # ── Rescuing the bot's own config after a factory reset ─────────────────
+    "auth.configRestored": (
+        "🔧 Put this bot's own settings back (webhook and web-view URL). The reset had wiped "
+        "them along with everything else, and without the webhook URL the bot would not have "
+        "come back after its next restart."
+    ),
+    "auth.configRestoreFailed": (
+        "⚠️ I couldn't write this bot's webhook URL back into Settings. The reset wiped it, so "
+        "the bot will not start again once it is restarted. Set it in the web app → Developer → "
+        "Webhook URL:\n<code>{url}</code>"
+    ),
+    "auth.webhookUnknown": (
+        "⚠️ Settings has no webhook URL and I couldn't read the one Telegram is using, so I have "
+        "nothing to put back. Set it in the web app → Developer → Webhook URL before restarting "
+        "the bot, or it will not come back."
+    ),
+
+    # ── Reminders (bot/reminders.py) ────────────────────────────────────────
+    "auth.remind.title": "🔔 <b>A quick nudge</b>",
+    "auth.remind.subsHeader": "🔁 <b>Subscriptions</b>",
+    "auth.remind.subToday": "• {name} — {amount}, due today",
+    "auth.remind.subOverdue": "• {name} — {amount}, was due {date}",
+    "auth.remind.subsMore": "…and {count} more.",
+    "auth.remind.monthHeader": "📅 <b>{month} can be closed</b>",
+    "auth.remind.monthBody": (
+        "The month ends on {date}. Closing it records your real wallet balances and cannot be "
+        "undone."
+    ),
+    "auth.remind.bucketsHeader": "🎯 <b>Still to set aside</b>",
+    "auth.remind.bucketLine": "• {bucket} — {remaining} of {target} left",
+    "auth.remind.bucketsFoot": "<i>Only a few days left in the month.</i>",
+    "auth.remind.bucket.DONATION": "Donation",
+    "auth.remind.bucket.EMERGENCY": "Emergency fund",
+    "auth.remind.bucket.INVESTMENTS": "Investments",
+    "auth.remind.bucket.STOCKS": "Stocks",
+}
+
+UZ: dict[str, str] = {
+    # ── The welcome screen ──────────────────────────────────────────────────
+    "auth.loginButton": "🔑 Kirish",
+    "auth.setupButton": "🆕 Botni sozlash",
+    "auth.welcome": (
+        "👋 <b>Tracker</b> — bitta odamning puli, bitta chatda.\n\n"
+        "Bu bot faqat bitta hisobga xizmat qiladi: uning daromadi, obunalari, hamyonlari va shu "
+        "asosda tuzilgan oylik konverti. Davom etish uchun oʻsha hisob bilan kiring."
+    ),
+    "auth.welcomeFirstRun": (
+        "👋 <b>Tracker</b> — bitta odamning puli, bitta chatda.\n\n"
+        "Hali hisob yaratilmagan, shuning uchun bu yerga yoziladigan keyingi login va parol uni "
+        "<b>yaratadi</b> va shu chat butunlay uning egasi boʻlib qoladi. Agar bu botni siz "
+        "sozlamagan boʻlsangiz, yopib qoʻying va sozlagan odamga ayting.\n\n"
+        "Parol kamida 6 ta belgidan iborat boʻlishi kerak."
+    ),
+    "auth.pleaseLoginFirst": "🔒 Avval tizimga kiring.",
+
+    # ── The typed flow ──────────────────────────────────────────────────────
+    "auth.enterUsername": "👤 <b>Loginingizni</b> kiriting:",
+    "auth.enterPassword": "🔑 Endi <b>parolingizni</b> kiriting:",
+    "auth.chooseUsername": "👤 Yangi hisob uchun <b>login</b> tanlang:",
+    "auth.choosePassword": "🔑 Endi <b>parol</b> tanlang — kamida 6 ta belgi:",
+    "auth.usernameNeeded": "👤 Loginingizni oddiy matn qilib yuboring.",
+    "auth.passwordNeeded": "🔑 Parolingizni oddiy matn qilib yuboring.",
+    "auth.commandDuringLogin": (
+        "🤔 <code>/{cmd}</code> — bunday buyruq yoʻq, siz esa hozir tizimga kirayapsiz. Shuning "
+        "uchun uni login yoki parol sifatida qabul qilmadim. Yuqoridagi savolga javob yozing "
+        "yoki Bekor qilishni bosing."
+    ),
+    "auth.accountCreated": "hisobingiz yaratildi",
+    "auth.loggedIn": "tizimga kirdingiz",
+    "auth.loginSuccess": "✅ <b>{username}</b> — {verb}. Sessiya 24 soat (yoki /lock buyrugʻigacha) davom etadi.",
+    "auth.setIncomeNext": (
+        "Hozircha hech narsani qayd etib boʻlmaydi: barqaror oylik daromadingiz kiritilmaguncha "
+        "pul yozadigan har bir ekran rad etiladi, chunki darajangiz ham, har bir ajratma "
+        "raqami ham oʻshandan hisoblanadi. Uni hozir kiriting va botning qolgan qismi ochiladi."
+    ),
+    "auth.tryAgain": "Qayta urinish uchun /login bosing.",
+    "auth.serverUnreachable": "❌ Serverga ulanib boʻlmadi. Backend ishlayaptimi?",
+    "auth.locked": "🔒 Qulflandi. Qayta kirishingiz kerak boʻladi.",
+    "auth.lockedToast": "Qulflandi",
+
+    # ── The backend's own authentication sentences ──────────────────────────
+    "auth.err.invalidCredentials": "❌ Login yoki parol notoʻgʻri.",
+    "auth.err.passwordTooShort": "❌ Parol kamida 6 ta belgidan iborat boʻlishi kerak.",
+    "auth.err.usernameRequired": "❌ Login kiritilishi shart.",
+    "auth.err.accountExists": "❌ Hisob allaqachon mavjud — oʻsha bilan kiring.",
+
+    # ── The password message ────────────────────────────────────────────────
+    "auth.passwordNotDeleted": (
+        "⚠️ Parolingizni yozgan xabaringizni oʻchira olmadim, u hamon shu chat tarixida turibdi. "
+        "Uni oʻzingiz oʻchiring — xabarni bosib turing → Oʻchirish."
+    ),
+
+    # ── Rescuing the bot's own config after a factory reset ─────────────────
+    "auth.configRestored": (
+        "🔧 Botning oʻz sozlamalarini (webhook va web-view manzillari) qaytarib qoʻydim. Toʻliq "
+        "tozalash ularni ham oʻchirib yuborgan edi, webhook manzilisiz esa bot keyingi qayta "
+        "ishga tushishida umuman koʻtarilmasdi."
+    ),
+    "auth.configRestoreFailed": (
+        "⚠️ Botning webhook manzilini Sozlamalarga qaytarib yoza olmadim. Toʻliq tozalash uni "
+        "oʻchirib yuborgan, demak bot qayta ishga tushirilsa koʻtarilmaydi. Uni veb-ilovada "
+        "sozlang: Developer → Webhook URL:\n<code>{url}</code>"
+    ),
+    "auth.webhookUnknown": (
+        "⚠️ Sozlamalarda webhook manzili yoʻq, Telegram ishlatayotganini ham oʻqiy olmadim — "
+        "qaytaradigan narsam qolmadi. Botni qayta ishga tushirishdan oldin uni veb-ilovada "
+        "sozlang: Developer → Webhook URL, aks holda bot koʻtarilmaydi."
+    ),
+
+    # ── Reminders (bot/reminders.py) ────────────────────────────────────────
+    "auth.remind.title": "🔔 <b>Kichik eslatma</b>",
+    "auth.remind.subsHeader": "🔁 <b>Obunalar</b>",
+    "auth.remind.subToday": "• {name} — {amount}, bugun toʻlanadi",
+    "auth.remind.subOverdue": "• {name} — {amount}, muddati {date} edi",
+    "auth.remind.subsMore": "…va yana {count} ta.",
+    "auth.remind.monthHeader": "📅 <b>{month} oyini yopish mumkin</b>",
+    "auth.remind.monthBody": (
+        "Oy {date} kuni tugaydi. Yopish haqiqiy hamyon qoldiqlaringizni qayd etadi va uni "
+        "orqaga qaytarib boʻlmaydi."
+    ),
+    "auth.remind.bucketsHeader": "🎯 <b>Hali ajratilmagan</b>",
+    "auth.remind.bucketLine": "• {bucket} — {target} dan {remaining} qoldi",
+    "auth.remind.bucketsFoot": "<i>Oy tugashiga bir necha kun qoldi.</i>",
+    "auth.remind.bucket.DONATION": "Xayriya",
+    "auth.remind.bucket.EMERGENCY": "Favqulodda jamgʻarma",
+    "auth.remind.bucket.INVESTMENTS": "Investitsiyalar",
+    "auth.remind.bucket.STOCKS": "Aksiyalar",
+}
