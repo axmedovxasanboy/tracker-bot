@@ -292,7 +292,6 @@ def _cat_payload(row: dict) -> dict:
         "icon": row.get("icon"),
         "applicableSubType": row.get("applicableSubType"),
         "parentId": row.get("parentId"),
-        "kind": row.get("kind"),
         "descriptionLabel": row.get("descriptionLabel"),
         "descriptionRequired": row.get("descriptionRequired"),
         "anonymizes": row.get("anonymizes"),

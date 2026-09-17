@@ -153,8 +153,8 @@ EN: dict[str, str] = {
                                "until things ease up.",
     "menu.overview.noteComfortable": "5M UZS or more is left after debt — the higher "
                                      "allocations apply.",
-    "menu.overview.noteLoanAndDebt": "Both a loan and debts — emergency fund and stocks are "
-                                     "skipped at this tier; focus on the debt.",
+    "menu.overview.noteLoanAndDebt": "Both a loan and debts — the emergency fund is skipped at "
+                                     "this tier; focus on the debt.",
     "menu.overview.noteHeavyDebt": "Heavy debt (over 70% of income): only a 2% donation this "
                                    "month. You may draw on the emergency fund if things get "
                                    "really bad.",
@@ -387,8 +387,7 @@ UZ: dict[str, str] = {
     "menu.overview.noteComfortable": "Qarzdan keyin 5 mln UZS yoki koʻproq qoladi — kattaroq "
                                      "ajratmalar qoʻllanadi.",
     "menu.overview.noteLoanAndDebt": "Ham kredit, ham qarz bor — bu darajada favqulodda "
-                                     "jamgʻarma va aksiyalar oʻtkazib yuboriladi; eʼtiborni "
-                                     "qarzga qarating.",
+                                     "jamgʻarma oʻtkazib yuboriladi; eʼtiborni qarzga qarating.",
     "menu.overview.noteHeavyDebt": "Ogʻir qarz (daromadning 70 foizidan koʻpi): bu oy faqat 2% "
                                    "xayriya. Ahvol juda ogʻirlashsa, favqulodda jamgʻarmadan "
                                    "olishingiz mumkin.",

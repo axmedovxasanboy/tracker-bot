@@ -26,7 +26,18 @@ both identities outright (`taggedTotal = taggedRecorded + markedNotMoved` and
 as separate lines, because the failure this prevents is the owner believing money moved when
 it did not, on a screen whose arithmetic is then frozen forever.
 
-Callback namespace owned here: `months:*` (the read screens) and `mc:*` (the close flow).
+**A check-in is the close without the lock.** Reconciling only at the close leaves a month of
+small unrecorded spending to surface as one gap nobody can explain any more; a wallet check-in
+(`WalletCheckInService`) books it every few days, as the same everyday-spending adjustment.
+It walks the wallets exactly the way the close does, so it rides the same per-wallet flow —
+Back, the per-wallet edit, the review, the stale-button recovery — and `mc_mode` in the FSM
+data says which of the two is running. Only the intro, the review's wording and the final POST
+differ. The server decides when one is allowed (never once the next would fall in next month:
+the close is then at most five days away and reconciles the same wallets), so the web app and
+the bot cannot disagree about it.
+
+Callback namespace owned here: `months:*` (the read screens), `mc:*` (the per-wallet walk both
+flows share) and `ci:*` (entering a check-in).
 """
 import re
 
@@ -150,6 +161,65 @@ async def _ready(event) -> bool:
     return await common.stable_income_set(event)
 
 
+# ── wallet check-in: the pieces the shared walk needs ───────────────────────
+def _mode(data: dict) -> str:
+    """Which flow the shared per-wallet walk is serving. Anything but a check-in is the close."""
+    return "checkin" if data.get("mc_mode") == "checkin" else "close"
+
+
+def _day(iso) -> str:
+    """`2026-09-20` → `20.09` — how a date is written here, and short enough to scan."""
+    text = str(iso or "")
+    return f"{text[8:10]}.{text[5:7]}" if len(text) >= 10 else "—"
+
+
+async def _checkin_status(chat_id: int) -> dict | None:
+    """Today's check-in status, or None when it cannot be read: the summary still renders.
+
+    Today is the owner's Tashkent day from `bot.clock` — the server runs on UTC, and on the 1st
+    before 05:00 its own clock would still be in the previous month.
+    """
+    try:
+        return await api.request(chat_id, "GET", "/months/checkin",
+                                 params={"date": clock.today_iso()}) or None
+    except api.NeedsLogin:
+        raise
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _checkin_lines(chat_id: int, st: dict) -> list[str]:
+    """Where the check-ins stand, for the summary and the check-in intro."""
+    month = str(st.get("month") or "")
+    if not st.get("allowed"):
+        if st.get("blockedCode") != "MONTH_ENDING":
+            return []
+        days = int(st.get("daysUntilMonthEnd") or 0)
+        key = ("months.checkIn.endsToday" if days <= 0
+               else "months.checkIn.endsInDay" if days == 1
+               else "months.checkIn.endsInDays")
+        lines = [t(chat_id, key, month=month, days=days, date=_day(st.get("nextMonthStart")))]
+    else:
+        since = st.get("daysSinceLastReconciled")
+        if since is None:
+            lines = [t(chat_id, "months.checkIn.statusNever")]
+        elif st.get("due"):
+            lines = [t(chat_id, "months.checkIn.statusDue", days=since)]
+        else:
+            first = (t(chat_id, "months.checkIn.statusToday") if since == 0
+                     else t(chat_id, "months.checkIn.statusYesterday") if since == 1
+                     else t(chat_id, "months.checkIn.statusDaysAgo", days=since))
+            nxt = (t(chat_id, "months.checkIn.nextOn", date=_day(st.get("nextDueOn")))
+                   if st.get("nextDueOn") else t(chat_id, "months.checkIn.nextIsClose"))
+            lines = [f"{first} {nxt}"]
+    so_far = _as_float(st.get("everydaySoFar")) or 0.0
+    if so_far > 0:
+        lines.append(t(chat_id, "months.checkIn.soFar", amount=fmt_money(so_far)))
+    elif so_far < 0:
+        lines.append(t(chat_id, "months.checkIn.soFarSurplus", amount=fmt_money(-so_far)))
+    return lines
+
+
 # ── summary view ────────────────────────────────────────────────────────────
 async def show_menu(cb: CallbackQuery, state: FSMContext | None = None) -> None:
     """Entry point for the main menu (`menu.py` imports this name)."""
@@ -199,7 +269,21 @@ async def show_summary(event, month: str | None = None) -> None:
                  if closed else t(chat_id, "months.everydayPending"))
 
     now = clock.month()
+    checkin = None
+    if not closed and month == now:
+        try:
+            checkin = await _checkin_status(chat_id)
+        except api.NeedsLogin:
+            await common.show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+            return
+        if checkin:
+            lines += [""] + _checkin_lines(chat_id, checkin)
+
     rows = []
+    if checkin and checkin.get("allowed"):
+        # First, above the close: mid-month the check-in is the thing to do, and closing a month
+        # that still has days left would lock them.
+        rows.append([(t(chat_id, "months.checkIn.btn"), "ci:start")])
     if not closed:
         label = (t(chat_id, "months.closeThisMonth") if month == now
                  else t(chat_id, "months.closeMonthBtn", month=month))
@@ -451,11 +535,15 @@ async def _close_intro(event, state: FSMContext, month: str) -> None:
 
     data = await state.get_data()
     values = data.get("mc_values")
-    if (data.get("mc_month") != month or not isinstance(values, list)
+    # Balances carry over only from an interrupted close of this same month: a check-in's are
+    # today's, not the month-end's, and reusing them here would put the wrong day's figures
+    # into a record that can never be changed.
+    if (_mode(data) != "close" or data.get("mc_month") != month or not isinstance(values, list)
             or _wallet_keys(data.get("mc_wallets")) != _wallet_keys(wallets)):
         values = [None] * len(wallets)
     await state.set_state(CloseMonth.month)
-    await state.update_data(mc_month=month, mc_wallets=wallets, mc_values=list(values), mc_index=0)
+    await state.update_data(mc_mode="close", mc_month=month, mc_wallets=wallets,
+                            mc_values=list(values), mc_index=0)
 
     behind = _month_index(clock.month()) - _month_index(month)
     lines = [t(chat_id, "months.introTitle", month=month)]
@@ -482,6 +570,75 @@ async def _close_intro(event, state: FSMContext, month: str) -> None:
     await common.show(event, "\n".join(lines), ikb(rows))
 
 
+@router.callback_query(F.data == "ci:start")
+async def ci_start(cb: CallbackQuery, state: FSMContext) -> None:
+    await common.ack(cb)
+    if not await _ready(cb):
+        return
+    await _checkin_intro(cb, state)
+
+
+async def _checkin_intro(event, state: FSMContext) -> None:
+    """The check-in's first screen, and Back's destination from its first wallet.
+
+    Re-reads the status every time rather than trusting the button that led here: the button
+    may be days old, and the month may have crossed into its last five days since.
+    """
+    chat_id = common.chat_id_of(event)
+    try:
+        st = await api.request(chat_id, "GET", "/months/checkin",
+                               params={"date": clock.today_iso()}) or {}
+    except api.NeedsLogin:
+        await common.show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return
+    except api.Unreachable:
+        await common.show(event, t(chat_id, "common.serverUnreachable"), _back_kb(chat_id))
+        return
+    except api.ApiError as exc:
+        await common.show(event, f"❌ {esc(exc.message)}", _back_kb(chat_id))
+        return
+    except Exception:  # noqa: BLE001
+        await common.show(event, t(chat_id, "months.checkIn.loadError"), _back_kb(chat_id))
+        return
+
+    if not st.get("allowed"):
+        await state.clear()
+        lines = _checkin_lines(chat_id, st) or [f"🔒 {esc(st.get('blockedReason') or '')}"]
+        await common.show(event, "\n".join(lines), _back_kb(chat_id))
+        return
+    wallets = st.get("wallets") or []
+    if not wallets:
+        await common.show(event, t(chat_id, "months.noWallets"), _back_kb(chat_id))
+        return
+
+    date = str(st.get("date") or clock.today_iso())
+    data = await state.get_data()
+    values = data.get("mc_values")
+    if (_mode(data) != "checkin" or data.get("mc_date") != date or not isinstance(values, list)
+            or _wallet_keys(data.get("mc_wallets")) != _wallet_keys(wallets)):
+        values = [None] * len(wallets)
+    await state.set_state(CloseMonth.month)
+    await state.update_data(mc_mode="checkin", mc_date=date, mc_month=str(st.get("month") or clock.month()),
+                            mc_wallets=wallets, mc_values=list(values), mc_index=0)
+
+    lines = [t(chat_id, "months.checkIn.introTitle", date=_day(date)), ""]
+    lines += _checkin_lines(chat_id, st)
+    lines += ["", t(chat_id, "months.checkIn.introBody", count=len(wallets)),
+              t(chat_id, "months.checkIn.recordFirst")]
+    rows = [[(t(chat_id, "months.startBtn"), "mc:start")],
+            ui.nav(chat_id, back="months:summary", menu=True)]
+    await common.show(event, "\n".join(lines), ikb(rows))
+
+
+async def _intro(event, state: FSMContext) -> None:
+    """Back to the first screen of whichever flow is running."""
+    d = await state.get_data()
+    if _mode(d) == "checkin":
+        await _checkin_intro(event, state)
+    else:
+        await _close_intro(event, state, d["mc_month"])
+
+
 # ── close flow: one wallet at a time ────────────────────────────────────────
 def _first_unset(values: list) -> int | None:
     for i, v in enumerate(values):
@@ -499,15 +656,17 @@ async def _prompt(event, state: FSMContext) -> None:
     computed = _as_float(w.get("computedBalance"))
     entered = d["mc_values"][idx]
 
+    checkin = _mode(d) == "checkin"
     lines = [
-        t(chat_id, "months.closeHeader", month=d["mc_month"], index=idx + 1, total=len(wallets)),
+        (t(chat_id, "months.checkIn.header", index=idx + 1, total=len(wallets)) if checkin
+         else t(chat_id, "months.closeHeader", month=d["mc_month"], index=idx + 1, total=len(wallets))),
         "",
         f"<b>{esc(_wallet_label(chat_id, w))}</b>",
         t(chat_id, "months.walletComputed", amount=fmt_money(computed)),
     ]
     if computed is not None and computed < 0:
         lines.append(t(chat_id, "months.overdrawnNote"))
-    lines += ["", t(chat_id, "months.walletAsk", currency=CURRENCY)]
+    lines += ["", t(chat_id, "months.checkIn.walletAsk" if checkin else "months.walletAsk", currency=CURRENCY)]
 
     rows = []
     if entered is not None:
@@ -517,6 +676,7 @@ async def _prompt(event, state: FSMContext) -> None:
         # figure is a legal balance to *report* and an illegal one to *submit*. Offering it
         # as a button was a trap: the 400 only arrived after every other wallet was typed.
         offer = (t(chat_id, "months.useZero") if computed < 0
+                 else t(chat_id, "months.checkIn.matchesBtn", amount=fmt_money(computed)) if checkin
                  else t(chat_id, "months.useComputed", amount=fmt_money(computed)))
         rows.append([(offer, f"mc:use:{idx}")])
     rows.append(ui.nav(chat_id, back=f"mc:back:{idx}", cancel="mc:cancel"))
@@ -599,7 +759,7 @@ async def mc_back(cb: CallbackQuery, state: FSMContext) -> None:
     d = await state.get_data()
     idx = int(d.get("mc_index") or 0)
     if idx <= 0:
-        await _close_intro(cb, state, d["mc_month"])
+        await _intro(cb, state)
         return
     await state.update_data(mc_index=idx - 1)
     await _prompt(cb, state)
@@ -634,22 +794,33 @@ async def _review(event, state: FSMContext, notice: str | None = None) -> None:
     wallets, values = d["mc_wallets"], d["mc_values"]
     total = sum(v for v in values if v is not None)
 
+    checkin = _mode(d) == "checkin"
     lines = []
     if notice:
         lines += [notice, ""]
-    lines += [t(chat_id, "months.confirmCloseHeader", month=d["mc_month"]), "",
+    lines += [(t(chat_id, "months.checkIn.reviewHeader", date=_day(d.get("mc_date"))) if checkin
+               else t(chat_id, "months.confirmCloseHeader", month=d["mc_month"])), "",
               t(chat_id, "months.realBalancesEntered")]
     for i, w in enumerate(wallets):
         lines.append(t(chat_id, "months.walletLine", index=i + 1,
                        label=esc(_wallet_label(chat_id, w)), amount=fmt_money(values[i])))
-    lines += ["", t(chat_id, "months.reviewTotal", amount=fmt_money(total)),
-              t(chat_id, "months.permanentWarning"), "", t(chat_id, "months.reviewHint")]
+    if checkin:
+        # The same arithmetic the server runs, per wallet: computed − entered, netted.
+        gap = sum((_as_float(w.get("computedBalance")) or 0.0) - v
+                  for w, v in zip(wallets, values) if v is not None)
+        lines += ["", (t(chat_id, "months.checkIn.willRecord", amount=fmt_money(gap)) if gap > 0
+                       else t(chat_id, "months.checkIn.willRecordSurplus", amount=fmt_money(-gap)) if gap < 0
+                       else t(chat_id, "months.checkIn.willRecordNothing")),
+                  "", t(chat_id, "months.checkIn.reviewHint")]
+    else:
+        lines += ["", t(chat_id, "months.reviewTotal", amount=fmt_money(total)),
+                  t(chat_id, "months.permanentWarning"), "", t(chat_id, "months.reviewHint")]
 
     # Button text is not HTML-parsed, so the label goes in raw — esc() here would print a
     # literal &amp; on any card the owner named "Visa & co".
     rows = ui.grid([(t(chat_id, "months.editWalletBtn", label=_wallet_label(chat_id, w)), f"mc:edit:{i}")
                     for i, w in enumerate(wallets)], 2)
-    rows.append([(t(chat_id, "months.confirmClose"), "mc:ok")])
+    rows.append([(t(chat_id, "months.checkIn.saveBtn") if checkin else t(chat_id, "months.confirmClose"), "mc:ok")])
     # Back from the review is the last wallet — the same screen the edit buttons open, so
     # there is one way in and one way out of every step.
     rows.append(ui.nav(chat_id, back=f"mc:edit:{len(wallets) - 1}", cancel="mc:cancel"))
@@ -686,10 +857,13 @@ async def mc_ok(cb: CallbackQuery, state: FSMContext) -> None:
         await _prompt(cb, state)
         return
 
-    payload = {"month": d["mc_month"], "wallets": [
-        {"walletType": w.get("walletType"), "cardId": w.get("cardId"),
-         "currency": w.get("currency") or CURRENCY, "enteredBalance": v}
-        for w, v in zip(wallets, values)]}
+    entries = [{"walletType": w.get("walletType"), "cardId": w.get("cardId"),
+                "currency": w.get("currency") or CURRENCY, "enteredBalance": v}
+               for w, v in zip(wallets, values)]
+    if _mode(d) == "checkin":
+        await _commit_checkin(cb, state, d, entries)
+        return
+    payload = {"month": d["mc_month"], "wallets": entries}
     await common.begin_write(cb, chat_id)
     try:
         res = await api.request(chat_id, "POST", "/months/close", json=payload) or {}
@@ -731,6 +905,44 @@ async def mc_ok(cb: CallbackQuery, state: FSMContext) -> None:
     await common.show(cb, "\n".join(lines), ikb(rows))
 
 
+async def _commit_checkin(cb: CallbackQuery, state: FSMContext, d: dict, entries: list[dict]) -> None:
+    chat_id = common.chat_id_of(cb)
+    await common.begin_write(cb, chat_id)
+    try:
+        res = await api.request(chat_id, "POST", "/months/checkin",
+                                json={"date": d.get("mc_date") or clock.today_iso(), "wallets": entries}) or {}
+    except api.NeedsLogin:
+        await state.clear()
+        await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return
+    except api.Unreachable:
+        await _review(cb, state, t(chat_id, "common.serverUnreachable"))
+        return
+    except api.ApiError as exc:
+        # Kept, as for the close: the owner fixes one figure instead of retyping every wallet.
+        await _review(cb, state, f"{t(chat_id, 'months.checkIn.refused')}\n{esc(exc.message)}")
+        return
+    except Exception:  # noqa: BLE001
+        await _review(cb, state, t(chat_id, "common.serverUnreachable"))
+        return
+
+    await state.clear()
+    recorded = _as_float(res.get("everydayRecorded")) or 0.0
+    so_far = _as_float(res.get("everydaySoFar")) or 0.0
+    lines = [
+        t(chat_id, "months.checkIn.savedTitle"),
+        (t(chat_id, "months.checkIn.savedSpent", amount=fmt_money(recorded)) if recorded > 0
+         else t(chat_id, "months.checkIn.savedSurplus", amount=fmt_money(-recorded)) if recorded < 0
+         else t(chat_id, "months.checkIn.savedMatched")),
+    ]
+    if so_far:
+        lines.append(t(chat_id, "months.checkIn.soFar" if so_far > 0 else "months.checkIn.soFarSurplus",
+                       amount=fmt_money(abs(so_far))))
+    lines.append(t(chat_id, "months.checkIn.nextOn", date=_day(res.get("nextDueOn"))) if res.get("nextDueOn")
+                 else t(chat_id, "months.checkIn.nextIsClose"))
+    await common.show(cb, "\n".join(lines), _back_kb(chat_id))
+
+
 @router.callback_query(F.data == "mc:cancel")
 async def mc_cancel(cb: CallbackQuery, state: FSMContext) -> None:
     await common.ack(cb)
@@ -751,7 +963,7 @@ async def _resume(event, state: FSMContext) -> bool:
     elif current == CloseMonth.balance.state:
         await _prompt(event, state)
     elif current == CloseMonth.month.state:
-        await _close_intro(event, state, d["mc_month"])
+        await _intro(event, state)
     else:
         return False
     return True

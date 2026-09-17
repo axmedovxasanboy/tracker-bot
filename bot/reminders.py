@@ -215,6 +215,7 @@ async def _compose(chat_id: int, today: dt.date) -> tuple[list[str], list[str], 
         tier = await _get(chat_id, "/overview/tier", {"month": month})
 
     _add_subscriptions(chat_id, today_iso, _still_unpaid(due, tier), lines, pages, notices)
+    await _add_checkin(chat_id, today_iso, lines, pages, notices)
     if days_left <= _MONTH_CLOSE_WINDOW:
         await _add_month_close(chat_id, today_iso, month, last_day, lines, pages, notices)
     if days_left <= _BUCKET_WINDOW:
@@ -290,6 +291,30 @@ def _add_subscriptions(chat_id: int, today_iso: str,
     lines.append("")
     pages.append("finance")
     notices.extend(f"sub:{row.get('id')}" for row, _ in fresh)
+
+
+async def _add_checkin(chat_id: int, today_iso: str,
+                       lines: list[str], pages: list[str], notices: list[str]) -> None:
+    """A wallet check-in, once it has fallen due.
+
+    "Due" is the server's verdict (`WalletCheckInService`): five days after the last
+    reconciliation, and never in the month's last days, when the close is at most five days
+    away and the month-close section below speaks instead. Asking rather than counting here is
+    what keeps this loop, the Months screen and the web app from disagreeing about it.
+    """
+    notice = "checkin"
+    if _sent.get(notice) == today_iso:
+        return
+    status = await _get(chat_id, "/months/checkin", {"date": today_iso})
+    if not isinstance(status, dict) or not status.get("due"):
+        return
+    days = status.get("daysSinceLastReconciled")
+    lines.append(t(chat_id, "auth.remind.checkInHeader"))
+    lines.append(t(chat_id, "auth.remind.checkInBody", days=days) if days is not None
+                 else t(chat_id, "auth.remind.checkInNever"))
+    lines.append("")
+    pages.append("months")
+    notices.append(notice)
 
 
 async def _add_month_close(chat_id: int, today_iso: str, month: str, last_day: int,

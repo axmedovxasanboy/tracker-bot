@@ -17,12 +17,12 @@ actually lose track of:
   Never let one of the two do the other's job: `menu.bucket.markedPart` and
   `months.taggedTotal` already draw the same line, and the owner reads all three screens.
 
-* **Deleting a record is not always harmless.** `fin.deleteReversesMoney` covers investments,
-  savings goals and emergency contributions, where the mirror transaction dies with the row
-  (`FinanceService.deleteInvestment`, `EmergencyService.delete`) and the cash lands back in
-  the wallet. `fin.deleteKeepsTransaction` covers donations, where `deleteDonation` removes
-  the row and leaves the expense standing. The two confirmations therefore say opposite
-  things about the same button, and both of them are true.
+* **Deleting a record is not always harmless.** `fin.deleteReversesMoney` covers donations,
+  investments, savings goals and emergency contributions, where the mirror transaction dies
+  with the row (`FinanceService.deleteDonation` / `deleteInvestment`, `EmergencyService.delete`)
+  and the cash lands back in the wallet. Donations used to keep their expense standing and had
+  their own warning saying so; since 2026-09-17 they reverse like the rest, and that warning
+  is gone.
 """
 
 EN: dict[str, str] = {
@@ -122,11 +122,8 @@ EN: dict[str, str] = {
                    "month on.",
     # Delete a record
     "fin.deleteConfirm": "🗑 <b>Delete this record?</b>\n\n{line}",
-    # Donations: deleteDonation drops the row and leaves the expense it mirrors alone.
-    "fin.deleteKeepsTransaction": "The expense stays in your wallet history — only this record "
-                                  "goes, and the money does <b>not</b> come back.",
-    # Investments, savings goals, emergency contributions: the mirror transaction is deleted
-    # with the row, and wallet balances are summed from transactions.
+    # Donations, investments, savings goals, emergency contributions: the mirror transaction is
+    # deleted with the row, and wallet balances are summed from transactions.
     "fin.deleteReversesMoney": "⚠️ The transaction behind it is deleted too: <b>the money goes "
                                "back into that wallet</b> and this month's set-aside total drops "
                                "by the same amount.",
@@ -391,8 +388,6 @@ UZ: dict[str, str] = {
     "fin.resumed": "▶️ <b>{name}</b> yana faol.\nShu oydan boshlab oylik toʻlov sifatida "
                    "hisoblanadi.",
     "fin.deleteConfirm": "🗑 <b>Bu yozuv oʻchirilsinmi?</b>\n\n{line}",
-    "fin.deleteKeepsTransaction": "Xarajatning oʻzi hamyon tarixida qoladi — faqat shu yozuv "
-                                  "oʻchadi, pul hamyoningizga <b>qaytmaydi</b>.",
     "fin.deleteReversesMoney": "⚠️ Ortidagi tranzaksiya ham oʻchadi: <b>pul oʻsha hamyoningizga "
                                "qaytadi</b> va shu oydagi ajratilgan jami shuncha kamayadi.",
     "fin.deleted": "🗑 Yozuv oʻchirildi.",

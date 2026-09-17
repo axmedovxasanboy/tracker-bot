@@ -28,7 +28,8 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 from . import api, common, errors, keyboards, middlewares, runtime
-from .config import (BOT_TOKEN, OWNER_CHAT_ID, REMINDERS_ENABLED, WEBHOOK_HOST, WEBHOOK_PATH,
+from .config import (BOT_TOKEN, OWNER_CHAT_ID, REMINDERS_ENABLED, WEB_VIEW_URL,
+                     WEBHOOK_HOST, WEBHOOK_PATH, WEBHOOK_URL,
                      WEBHOOK_PORT, WEBHOOK_SECRET)
 from .i18n import system as system_strings
 from .i18n import t
@@ -181,21 +182,51 @@ async def _register_commands(bot: Bot) -> None:
 
 
 def _load_config() -> tuple[str, str | None]:
-    """Fetch the webhook + web-view URLs from the backend (one-shot, before the server starts)."""
+    """The webhook + web-view URLs: the backend's copy when it has one, else this host's .env.
+
+    The backend stays authoritative, because the Developer page is where these are edited and
+    a value typed there has to take effect on the next restart. But it cannot be the ONLY
+    source. The URLs live in the `settings` row, `ResetService` TRUNCATEs that table, and the
+    bot reads it here before it can serve anything — so a factory reset (which the bot itself
+    offers, under Settings) leaves the bot unable to boot, crash-looping on a message telling
+    the owner to go and fix it in the web app. A wipe of the database should not be able to
+    take the bot down with it, so `WEBHOOK_URL` in the environment is the floor: it is set once
+    when the host is provisioned, it survives anything that happens inside Postgres, and it
+    means the bot can always come back up and be reconfigured from Telegram.
+    """
+    cfg: dict[str, Any] = {}
+    backend_error: Exception | None = None
     try:
-        cfg = asyncio.run(api.telegram_config())
+        cfg = asyncio.run(api.telegram_config()) or {}
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(
-            f"Couldn't read Telegram config from the backend ({exc}). "
-            "Is the backend running, and is API_BASE_URL correct?"
-        ) from exc
-    webhook_url = (cfg.get("webhookUrl") or "").strip()
-    web_view_url = (cfg.get("webViewUrl") or "").strip() or None
+        backend_error = exc
+
+    webhook_url = (cfg.get("webhookUrl") or "").strip() or WEBHOOK_URL
+    web_view_url = (cfg.get("webViewUrl") or "").strip() or WEB_VIEW_URL or None
+
     if not webhook_url:
+        if backend_error is not None:
+            raise SystemExit(
+                f"Couldn't read the Telegram config from the backend ({backend_error}), and "
+                "WEBHOOK_URL is not set either. Start the backend and check API_BASE_URL, or "
+                "set WEBHOOK_URL in .env so the bot can boot without it."
+            )
         raise SystemExit(
-            "No webhook URL configured. Open the web app → Developer → set the Webhook URL "
-            "(a public HTTPS URL Telegram can reach), then restart the bot."
+            "No webhook URL, from the backend or the environment. Either open the web app → "
+            "Developer and set the Webhook URL, or set WEBHOOK_URL in .env — a public HTTPS "
+            "URL Telegram can reach, ending in the path this bot serves. Then restart."
         )
+
+    # Which source won is the first thing you want to know when the bot is answering on a URL
+    # you did not expect, so it is stated rather than inferred from the absence of a warning.
+    if backend_error is not None:
+        logger.warning("The backend did not answer (%s) — falling back to WEBHOOK_URL from the "
+                       "environment. Anything set on the Developer page is being ignored.",
+                       backend_error)
+    elif not (cfg.get("webhookUrl") or "").strip():
+        logger.warning("The backend has no webhook URL stored (a factory reset clears it) — "
+                       "using WEBHOOK_URL from the environment. Set it on the Developer page "
+                       "to make it stick.")
     return webhook_url, web_view_url
 
 

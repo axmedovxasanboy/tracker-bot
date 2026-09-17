@@ -115,6 +115,23 @@ if not WEBHOOK_PATH.startswith("/"):
     # aiohttp's UrlDispatcher raises on a relative path; repairing it beats failing the boot
     # over a missing slash the owner cannot see in the error.
     WEBHOOK_PATH = "/" + WEBHOOK_PATH
+# The PUBLIC URL Telegram delivers to, and the web-view URL — normally set on the web app's
+# Developer page and read from the backend at boot. These env vars are the FLOOR under that:
+# the stored copy lives in the `settings` row, which a factory reset TRUNCATEs, and the bot
+# reads it before it can serve anything. Without a fallback a wiped database is a bot that
+# cannot boot and cannot be reconfigured from Telegram. The backend still wins when it has a
+# value, so the Developer page keeps working exactly as before.
+WEBHOOK_URL = _raw("WEBHOOK_URL")
+if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
+    # Telegram refuses a non-HTTPS webhook outright, and set_webhook's failure names the URL
+    # rather than the variable it came from.
+    raise _bad("WEBHOOK_URL", WEBHOOK_URL,
+               "expected a public HTTPS URL, e.g. https://bot.example.dev/webhook")
+WEB_VIEW_URL = _raw("WEB_VIEW_URL")
+if WEB_VIEW_URL and not WEB_VIEW_URL.startswith("https://"):
+    raise _bad("WEB_VIEW_URL", WEB_VIEW_URL,
+               "expected a public HTTPS URL (Telegram rejects http for a Web App)")
+
 # Telegram echoes this in the X-Telegram-Bot-Api-Secret-Token header. REQUIRED in production:
 # aiogram's verify_secret returns True unconditionally when it is blank, so an empty secret
 # means anyone who learns the public URL can POST forged updates to the bot.

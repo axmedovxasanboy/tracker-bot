@@ -97,6 +97,9 @@ EN: dict[str, str] = {
     "auth.remind.subToday": "• {name} — {amount}, due today",
     "auth.remind.subOverdue": "• {name} — {amount}, was due {date}",
     "auth.remind.subsMore": "…and {count} more.",
+    "auth.remind.checkInHeader": "⚖️ <b>Time for a wallet check-in</b>",
+    "auth.remind.checkInBody": "Your wallets were last checked {days} days ago. Tell the bot what's really in them, and the small spending you didn't write down gets recorded.",
+    "auth.remind.checkInNever": "Tell the bot what's really in each wallet, and the small spending you didn't write down gets recorded.",
     "auth.remind.monthHeader": "📅 <b>{month} can be closed</b>",
     "auth.remind.monthBody": (
         "The month ends on {date}. Closing it records your real wallet balances and cannot be "
@@ -189,6 +192,9 @@ UZ: dict[str, str] = {
     "auth.remind.subToday": "• {name} — {amount}, bugun toʻlanadi",
     "auth.remind.subOverdue": "• {name} — {amount}, muddati {date} edi",
     "auth.remind.subsMore": "…va yana {count} ta.",
+    "auth.remind.checkInHeader": "⚖️ <b>Hamyonlarni tekshirish vaqti keldi</b>",
+    "auth.remind.checkInBody": "Hamyonlaringiz oxirgi marta {days} kun oldin tekshirilgan. Ularda aslida qancha pul borligini botga yuboring — yozib qoʻyilmagan mayda xarajatlar qayd etiladi.",
+    "auth.remind.checkInNever": "Har bir hamyonda aslida qancha pul borligini botga yuboring — yozib qoʻyilmagan mayda xarajatlar qayd etiladi.",
     "auth.remind.monthHeader": "📅 <b>{month} oyini yopish mumkin</b>",
     "auth.remind.monthBody": (
         "Oy {date} kuni tugaydi. Yopish haqiqiy hamyon qoldiqlaringizni qayd etadi va uni "

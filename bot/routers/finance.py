@@ -522,7 +522,8 @@ SECTIONS = {
         "path": "/finance/donations", "title": "fin.donationsTitle", "create": "donation",
         "label": lambda r: r.get("displayName") or r.get("recipientName") or "?",
         "line": _line_donation, "to_request": _req_donation, "edit": _EDIT_DONATION,
-        "delete_warn": "fin.deleteKeepsTransaction",
+        # deleteDonation takes the donation's transaction with it (2026-09-17), as for the rest.
+        "delete_warn": "fin.deleteReversesMoney",
     },
     "investment": {
         "path": "/finance/investments", "title": "fin.investmentsTitle", "create": "investment",

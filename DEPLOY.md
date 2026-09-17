@@ -46,7 +46,16 @@ TLS and reverse-proxies the public webhook path to `bot:8081`.
 | Var              | Notes                                                  |
 | ---------------- | ------------------------------------------------------ |
 | `BOT_TOKEN`      | From @BotFather                                        |
-| `WEBHOOK_SECRET` | Shared secret Telegram echoes back in the `X-Telegram-Bot-Api-Secret-Token` header; the server rejects mismatches |
+| `WEBHOOK_SECRET` | **Required in production.** Shared secret Telegram echoes back in the `X-Telegram-Bot-Api-Secret-Token` header. Left blank the check is skipped entirely — aiogram's `verify_secret()` returns `True` when there is nothing to compare — so anyone who learns the public URL can POST forged updates. Generate one: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `OWNER_CHAT_ID`  | Your numeric Telegram chat id. Set it and the bot refuses every other chat outright. Leave it blank and the first chat that logs in claims the bot until the next restart. Get it from [@userinfobot](https://t.me/userinfobot), or start the bot, log in, and read the `Owner chat bound to …` line in `docker logs bot` |
+
+These live in `~/app/.env` on the VPS, **not** in GitHub Actions secrets — the Actions secrets
+above are only for building the image and SSH-ing in. Compose reads `~/app/.env` for the
+`${...}` values in the block below. After editing it:
+
+```bash
+cd ~/app && docker compose up -d bot     # `restart` does NOT re-read .env
+```
 
 Everything else is set inline in the compose `environment:` block below.
 
@@ -65,7 +74,22 @@ services:
       WEBHOOK_PORT: 8081
       WEBHOOK_PATH: /webhook
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      # The floor under the Developer page. The backend still wins when it has a value; this
+      # is what stops a factory reset (which TRUNCATEs the settings row holding the stored
+      # copy) from leaving the bot unable to boot. Must match the Caddy route below.
+      WEBHOOK_URL: https://bot.tracker.xasanboy.dev/webhook
+      WEB_VIEW_URL: ${WEB_VIEW_URL:-}
       SESSION_TTL_HOURS: 24
+      # Who the bot answers to. Blank = the first chat to log in claims it (see .env above).
+      OWNER_CHAT_ID: ${OWNER_CHAT_ID:-}
+      # What "today" and "this month" mean. The container runs UTC; Tashkent is +5, and
+      # without this an expense recorded before 05:00 lands in yesterday — or, on the 1st,
+      # in last month's envelope.
+      TZ_OFFSET_HOURS: 5
+      LOG_LEVEL: INFO
+      # Unprompted messages. Off unless you set both of these AND OWNER_CHAT_ID.
+      REMINDERS_ENABLED: ${REMINDERS_ENABLED:-false}
+      REMINDER_HOUR: 21
     networks:
       - app-network
     depends_on:
@@ -114,6 +138,79 @@ cd ~/app && docker compose restart bot
 
 The public webhook URL and Web View URL are **not** env vars — they live in the
 backend `Settings` singleton and are configured from the Developer page.
+
+## When `/start` does nothing
+
+The bot answers `/start` even with the backend down, so silence means the update never reached
+a handler. Work down this list — each step rules out one layer.
+
+**1. Is the process actually up, or restarting in a loop?**
+
+```bash
+docker ps -a --filter name=bot          # look at STATUS: "Restarting (1)" is the tell
+docker logs --tail 80 bot
+```
+
+**`No webhook URL configured`** means the backend answered but its `settings` row has no
+stored URL — a factory reset clears it, and so does a fresh database. Set `WEBHOOK_URL` in the
+compose block (it is the floor under the Developer page and survives any database wipe), or set
+it on the web app's Developer page, then `docker compose up -d bot`.
+
+A fatal boot error is now one plain sentence at the end of the log — a bad `.env` value names
+the variable, and an unreachable backend or a missing webhook URL says so outright. (Before
+this rebuild `run.py` swallowed `SystemExit`, so the same failure produced an empty log and
+`Exited (0)`, which reads like a clean shutdown. If you see that, you are on an old image.)
+
+The bot reads its public webhook URL from the backend at boot, so **the backend must be up
+first**. It exits if `GET /api/v1/settings/telegram` is unreachable or returns no URL.
+
+**2. Is the webhook registered, and is Telegram able to deliver to it?**
+
+This is the single most informative command — Telegram tells you why it is failing:
+
+```bash
+curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo" | python3 -m json.tool
+```
+
+- `"url": ""` → the bot never registered. Back to step 1.
+- `last_error_message` → Telegram reached your server and got an error. `Wrong response from
+  the webhook: 401 Unauthorized` means the secret mismatches (step 3); a TLS or DNS error
+  means Caddy or the DNS record; `Connection refused` means the container is not listening.
+- `pending_update_count` climbing → delivery is failing, not the handlers.
+
+**3. Did the secret drift?**
+
+The bot registers the webhook with whatever `WEBHOOK_SECRET` it booted with, and checks the
+same value on the way in, so the two only diverge if the container was restarted with a
+different `.env` than the one it registered under — most often by editing `.env` and running
+`docker compose restart`, which does **not** re-read it. Fix:
+
+```bash
+cd ~/app && docker compose up -d bot
+```
+
+**4. Is Caddy routing the path the bot listens on?**
+
+The bot listens on the *path of the public URL* set in the web app (falling back to
+`WEBHOOK_PATH`), so `https://bot.example.dev/webhook` means it serves `/webhook` — and the
+Caddy matcher has to agree. From the VPS:
+
+```bash
+curl -i https://bot.tracker.xasanboy.dev/webhook       # 405 = reached the bot. 404/502 = routing.
+```
+
+`405 Method Not Allowed` is the healthy answer to a GET: aiohttp has the route and wants a POST.
+
+**5. Are you the owner?**
+
+If `OWNER_CHAT_ID` is set to someone else's id, every update from your chat is dropped and the
+log says so once:
+
+```bash
+docker logs bot 2>&1 | grep -i "Refused chat_id"
+```
+
+Clear the variable (or set it to the id that line names) and `docker compose up -d bot`.
 
 ## Manual trigger
 

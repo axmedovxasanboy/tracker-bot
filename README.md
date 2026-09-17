@@ -46,12 +46,14 @@ tracker-telegram-bot/
 - **Home** (dashboard summary), **Plan** (tier + allocation), **Settings** (language, factory
   reset — password-confirmed, and it wipes the account).
 - **Transactions**: add (guided: type → amount → category → subtype → source → date → note →
-  confirm), recent (paged), view, delete.
-- **Finance**: read views for all 8 sections — debts, loans given, loans taken, bank loans,
-  subscriptions, donations, investments, savings goals — plus repay / mark returned / pay /
-  contribute / update goal value, and create through the shared wizard.
-- **Wallets**: cards list, view, add, delete; cash balances (set/upsert).
-- **Categories**: two-level list, add (root/sub + bonus-income flag), delete.
+  confirm), quick add ("50000 lunch", `/add`), move money between wallets, recent (paged),
+  view, delete.
+- **Finance**: 9 sections — debts, loans given, loans taken, bank loans, subscriptions,
+  donations, investments, savings goals, emergency fund — each with create (shared wizard),
+  edit and delete, plus repay / mark returned / pay / contribute / update goal value and
+  "already paid" marks.
+- **Wallets**: cards list, view, add, edit, delete; cash balances (set/upsert).
+- **Categories**: two-level list, add (root/sub + bonus-income flag), edit, delete.
 - **Months**: current-month summary, **permanent close** (you enter the real end-of-month
   balance of every wallet), and history.
 
@@ -64,9 +66,8 @@ session now · `/cancel` abort the current flow.
 
 Documented so the next reader stops looking for them:
 
-- **Nothing can be edited from the bot.** Records are created and deleted, never updated —
-  there is no `PUT` call anywhere in `bot/`. Edit in the web app.
-- **No transfer ("Move money") and no Emergencies section.** Both exist in the web app only.
+- **Transactions can't be edited from the bot** — add, view and delete only. Edit one in the
+  web app. (Cards, categories, finance records and the stable income can be edited here.)
 - **Sessions are in memory**, so a restart means logging in again (fine for a personal bot).
 - Every money-writing endpoint stays refused by the backend until **Monthly stable income**
   is set — that is the product rule, not a bot limitation.
