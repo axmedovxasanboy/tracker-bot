@@ -626,8 +626,16 @@ async def show_plan(event, month: str | None = None) -> None:
     rows: list[list[tuple[str, str]]] = []
     if not withheld:
         if data.get("allocationBase") is not None:
-            lines += ["", t(chat_id, "menu.overview.baseNote",
-                            base=fmt_money(data.get("allocationBase")))]
+            # The base already includes this month's bonus income. Name it, or the base reads as
+            # income − subscriptions − debt and the figure beside it does not add up.
+            bonus = _num(data.get("bonusIncome")) or 0.0
+            if bonus > 0:
+                lines += ["", t(chat_id, "menu.overview.baseNoteBonus",
+                                base=fmt_money(data.get("allocationBase")),
+                                bonus=fmt_money(bonus))]
+            else:
+                lines += ["", t(chat_id, "menu.overview.baseNote",
+                                base=fmt_money(data.get("allocationBase")))]
         if allocation.get("allocationLocked"):
             lines.append(t(chat_id, "menu.overview.allocationLocked"))
 
@@ -706,9 +714,13 @@ async def plan_details(cb: CallbackQuery) -> None:
         f"{t(chat_id, 'menu.overview.debtBank')}: {fmt_money(debt.get('bankLoans'))}",
         f"{t(chat_id, 'menu.overview.debtLoans')}: {fmt_money(debt.get('loansTaken'))}",
         f"{t(chat_id, 'menu.overview.debtDebts')}: {fmt_money(debt.get('debts'))}",
-        f"{t(chat_id, 'menu.overview.leftBalance')}: "
-        f"<b>{fmt_money(data.get('allocationBase'))}</b>",
     ]
+    bonus = _num(data.get("bonusIncome")) or 0.0
+    if bonus > 0:
+        # Inside the left balance below: a bonus raises this month's targets by its share.
+        lines.append(f"{t(chat_id, 'menu.overview.bonusIncome')}: +{fmt_money(bonus)}")
+    lines.append(f"{t(chat_id, 'menu.overview.leftBalance')}: "
+                 f"<b>{fmt_money(data.get('allocationBase'))}</b>")
     if ratio is not None:
         # `debtRatio` is the fraction debtPayments ÷ income, not a percentage.
         lines.append(f"{t(chat_id, 'menu.overview.debtRatio')}: {fmt_pct(ratio * 100)}")

@@ -35,8 +35,9 @@ EN: dict[str, str] = {
     "cat.pickType": "Pick the <b>type</b>:",
     "cat.parentHeader": "Parent: <b>{name}</b>\nSend the <b>sub-category name</b>:",
     "cat.parentGone": "That parent no longer exists.",
-    "cat.bonusQuestion": "Counts as <b>bonus income</b>? (Bonus adds the tier % on top of that month's "
-                         "allocation target — e.g. a holiday bonus or 13th salary.)",
+    "cat.bonusQuestion": "Counts as <b>bonus income</b>? (A bonus — e.g. a holiday bonus or 13th salary — "
+                         "raises that month's allocation targets by your level's share of it. Your "
+                         "level still comes from your stable income.)",
     "cat.bonusYes": "Yes — bonus",
     "cat.bonusNo": "No",
     "cat.created": "✅ Category <b>{name}</b> created.",
@@ -89,8 +90,9 @@ UZ: dict[str, str] = {
     "cat.pickType": "<b>Turini</b> tanlang:",
     "cat.parentHeader": "Ota kategoriya: <b>{name}</b>\n<b>Ichki kategoriya nomini</b> yuboring:",
     "cat.parentGone": "Bu ota kategoriya endi mavjud emas.",
-    "cat.bonusQuestion": "<b>Bonus daromad</b> hisoblansinmi? (Bonus shu oyning taqsimot maqsadiga ustama % "
-                         "qoʻshadi — masalan, bayram bonusi yoki 13-oylik.)",
+    "cat.bonusQuestion": "<b>Bonus daromad</b> hisoblansinmi? (Bonus — masalan, bayram bonusi yoki 13-oylik — "
+                         "shu oyning taqsimot maqsadlarini darajangizga tegishli ulush miqdorida "
+                         "oshiradi. Darajangiz esa barqaror daromadingizdan hisoblanadi.)",
     "cat.bonusYes": "Ha — bonus",
     "cat.bonusNo": "Yoʻq",
     "cat.created": "✅ <b>{name}</b> kategoriyasi yaratildi.",

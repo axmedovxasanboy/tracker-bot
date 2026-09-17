@@ -107,6 +107,9 @@ EN: dict[str, str] = {
     # payments already taken off, which is why the note spells the subtraction out.
     "menu.overview.baseNote": "<i>Percentages are taken from the left balance: {base} "
                               "(income − subscriptions − debt payments)</i>",
+    "menu.overview.baseNoteBonus": "<i>Percentages are taken from the left balance: {base} "
+                                   "(income − subscriptions − debt payments + {bonus} bonus "
+                                   "this month)</i>",
     "menu.overview.bucketsHeader": "<b>Set aside this month</b>",
     "menu.overview.bucketNoNeed": "{label}: <i>NO NEED this month</i>{extra}",
     "menu.overview.bucketPaidExtra": " · paid {paid}",
@@ -123,6 +126,7 @@ EN: dict[str, str] = {
     "menu.overview.mathHeader": "<b>How the left balance is built</b>",
     "menu.overview.mandatorySubs": "Subscriptions",
     "menu.overview.leftBalance": "Left balance",
+    "menu.overview.bonusIncome": "Bonus this month",
     "menu.overview.debtBank": "· bank loans",
     "menu.overview.debtLoans": "· loans taken",
     "menu.overview.debtDebts": "· debts",
@@ -343,6 +347,9 @@ UZ: dict[str, str] = {
     "menu.overview.allocationLocked": "🔒 Qulflangan — avval quyidagi bandlarni bajaring.",
     "menu.overview.baseNote": "<i>Foizlar qolgan balansdan hisoblanadi: {base} "
                               "(daromad − obunalar − qarz toʻlovlari)</i>",
+    "menu.overview.baseNoteBonus": "<i>Foizlar qolgan balansdan hisoblanadi: {base} "
+                                   "(daromad − obunalar − qarz toʻlovlari + shu oydagi {bonus} "
+                                   "bonus)</i>",
     "menu.overview.bucketsHeader": "<b>Bu oy ajratiladi</b>",
     "menu.overview.bucketNoNeed": "{label}: <i>bu oy KERAK EMAS</i>{extra}",
     "menu.overview.bucketPaidExtra": " · toʻlandi {paid}",
@@ -358,6 +365,7 @@ UZ: dict[str, str] = {
     "menu.overview.mathHeader": "<b>Qolgan balans qanday hosil boʻladi</b>",
     "menu.overview.mandatorySubs": "Obunalar",
     "menu.overview.leftBalance": "Qolgan balans",
+    "menu.overview.bonusIncome": "Shu oydagi bonus",
     "menu.overview.debtBank": "· bank kreditlari",
     "menu.overview.debtLoans": "· olingan qarzlar",
     "menu.overview.debtDebts": "· qarzlar",
