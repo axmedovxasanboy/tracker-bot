@@ -1,4 +1,4 @@
-"""The front door and the one unprompted message the bot sends.
+"""The front door: welcome, login, signup, lock.
 
 `auth.*`
 
@@ -11,9 +11,7 @@ in English prose and gives no code to key off, so `bot/routers/auth.py` matches 
 sentence; when the wording on the Java side changes the bot falls back to printing it
 verbatim, which is what it did for all four before.
 
-`auth.remind.*` belong to `bot/reminders.py`. They live here because reminders.py has no i18n
-module of its own — the namespace guard in `bot/i18n/__init__.py` allows exactly one prefix
-per module, and both files have the same owner.
+The evening message's strings are `adv.remind.*` (bot/i18n/adv.py), with the advisor it sends.
 """
 
 EN: dict[str, str] = {
@@ -91,27 +89,6 @@ EN: dict[str, str] = {
         "the bot, or it will not come back."
     ),
 
-    # ── Reminders (bot/reminders.py) ────────────────────────────────────────
-    "auth.remind.title": "🔔 <b>A quick nudge</b>",
-    "auth.remind.subsHeader": "🔁 <b>Subscriptions</b>",
-    "auth.remind.subToday": "• {name} — {amount}, due today",
-    "auth.remind.subOverdue": "• {name} — {amount}, was due {date}",
-    "auth.remind.subsMore": "…and {count} more.",
-    "auth.remind.checkInHeader": "⚖️ <b>Time for a wallet check-in</b>",
-    "auth.remind.checkInBody": "Your wallets were last checked {days} days ago. Tell the bot what's really in them, and the small spending you didn't write down gets recorded.",
-    "auth.remind.checkInNever": "Tell the bot what's really in each wallet, and the small spending you didn't write down gets recorded.",
-    "auth.remind.monthHeader": "📅 <b>{month} can be closed</b>",
-    "auth.remind.monthBody": (
-        "The month ends on {date}. Closing it records your real wallet balances and cannot be "
-        "undone."
-    ),
-    "auth.remind.bucketsHeader": "🎯 <b>Still to set aside</b>",
-    "auth.remind.bucketLine": "• {bucket} — {remaining} of {target} left",
-    "auth.remind.bucketsFoot": "<i>Only a few days left in the month.</i>",
-    "auth.remind.bucket.DONATION": "Donation",
-    "auth.remind.bucket.EMERGENCY": "Emergency fund",
-    "auth.remind.bucket.INVESTMENTS": "Investments",
-    "auth.remind.bucket.STOCKS": "Stocks",
 }
 
 UZ: dict[str, str] = {
@@ -186,25 +163,4 @@ UZ: dict[str, str] = {
         "sozlang: Developer → Webhook URL, aks holda bot koʻtarilmaydi."
     ),
 
-    # ── Reminders (bot/reminders.py) ────────────────────────────────────────
-    "auth.remind.title": "🔔 <b>Kichik eslatma</b>",
-    "auth.remind.subsHeader": "🔁 <b>Obunalar</b>",
-    "auth.remind.subToday": "• {name} — {amount}, bugun toʻlanadi",
-    "auth.remind.subOverdue": "• {name} — {amount}, muddati {date} edi",
-    "auth.remind.subsMore": "…va yana {count} ta.",
-    "auth.remind.checkInHeader": "⚖️ <b>Hamyonlarni tekshirish vaqti keldi</b>",
-    "auth.remind.checkInBody": "Hamyonlaringiz oxirgi marta {days} kun oldin tekshirilgan. Ularda aslida qancha pul borligini botga yuboring — yozib qoʻyilmagan mayda xarajatlar qayd etiladi.",
-    "auth.remind.checkInNever": "Har bir hamyonda aslida qancha pul borligini botga yuboring — yozib qoʻyilmagan mayda xarajatlar qayd etiladi.",
-    "auth.remind.monthHeader": "📅 <b>{month} oyini yopish mumkin</b>",
-    "auth.remind.monthBody": (
-        "Oy {date} kuni tugaydi. Yopish haqiqiy hamyon qoldiqlaringizni qayd etadi va uni "
-        "orqaga qaytarib boʻlmaydi."
-    ),
-    "auth.remind.bucketsHeader": "🎯 <b>Hali ajratilmagan</b>",
-    "auth.remind.bucketLine": "• {bucket} — {target} dan {remaining} qoldi",
-    "auth.remind.bucketsFoot": "<i>Oy tugashiga bir necha kun qoldi.</i>",
-    "auth.remind.bucket.DONATION": "Xayriya",
-    "auth.remind.bucket.EMERGENCY": "Favqulodda jamgʻarma",
-    "auth.remind.bucket.INVESTMENTS": "Investitsiyalar",
-    "auth.remind.bucket.STOCKS": "Aksiyalar",
 }

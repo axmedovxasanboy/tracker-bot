@@ -37,6 +37,9 @@ COPY --from=build /venv /venv
 WORKDIR /app
 COPY --chown=app:app bot/ ./bot/
 COPY --chown=app:app run.py ./
+# Where the owner's saved login lives (bot/storage.py). Owned by `app` so the bot can write it;
+# compose mounts a named volume here, which inherits this ownership on first use.
+RUN mkdir -p /app/data && chown app:app /app/data
 
 USER app
 

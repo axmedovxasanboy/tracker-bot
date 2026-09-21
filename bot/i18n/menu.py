@@ -30,7 +30,7 @@ EN: dict[str, str] = {
     # starts with an amount books a transaction. The main menu is the screen the owner sees
     # most, so the hint lives here rather than in a help screen they have no reason to open.
     # It replaces "Pick a section:", which eight labelled buttons already say.
-    "menu.homeText": "🏠 <b>Tracker</b> — main menu\n"
+    "menu.homeText": "☰ <b>Tracker</b> — every section\n"
                      "<i>Tip: type <code>50000 lunch</code> and the expense is recorded in "
                      "one message.</i>",
     "menu.openApp": "🚀 Open App",
@@ -38,7 +38,7 @@ EN: dict[str, str] = {
     "menu.quickAddBtn": "⚡ Quick add",
     "menu.helpBtn": "❓ Help",
     "menu.lock": "🔒 Lock",
-    "menu.page.dashboard": "📊 Home",
+    "menu.page.dashboard": "📊 This month",
     "menu.page.overview": "🎯 Plan",
     "menu.page.months": "🗓 Months",
     "menu.page.transactions": "💸 Transactions",
@@ -276,14 +276,14 @@ EN: dict[str, str] = {
 
 UZ: dict[str, str] = {
     # ── Bosh menyu ──────────────────────────────────────────────────────────
-    "menu.homeText": "🏠 <b>Tracker</b> — bosh menyu\n"
+    "menu.homeText": "☰ <b>Tracker</b> — barcha boʻlimlar\n"
                      "<i>Maslahat: <code>50000 tushlik</code> deb yozsangiz, xarajat bitta "
                      "xabar bilan yoziladi.</i>",
     "menu.openApp": "🚀 Ilovani ochish",
     "menu.quickAddBtn": "⚡ Tez qoʻshish",
     "menu.helpBtn": "❓ Yordam",
     "menu.lock": "🔒 Qulflash",
-    "menu.page.dashboard": "📊 Bosh sahifa",
+    "menu.page.dashboard": "📊 Shu oy",
     "menu.page.overview": "🎯 Reja",
     "menu.page.months": "🗓 Oylar",
     "menu.page.transactions": "💸 Tranzaksiyalar",

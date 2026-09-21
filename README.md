@@ -19,7 +19,9 @@ tracker-telegram-bot/
 └── bot/
     ├── config.py         # env settings, parsed and validated at import
     ├── clock.py          # "today" in Tashkent time — the container runs on UTC
-    ├── session.py        # in-memory sessions (TTL + /lock) + store singleton
+    ├── session.py        # sessions (TTL + /lock); the owner's is kept by storage.py
+    ├── storage.py        # the owner's saved login, language, reminder history (one JSON file)
+    ├── reminders.py      # the evening advisor message
     ├── api.py            # httpx API client: auth + request() with 401→refresh
     ├── money.py          # the one amount parser + the one money formatter
     ├── keyboards.py      # the bot's own menus (main menu, login, settings, language)
@@ -31,7 +33,8 @@ tracker-telegram-bot/
     ├── main.py           # Dispatcher + router wiring + webhook (aiohttp) server
     └── routers/
         ├── auth.py       # /start, typed login/signup, /lock, /menu, /cancel
-        ├── menu.py       # main menu, Home, Plan, Settings, language, factory reset
+        ├── advisor.py    # Home = the advisor, its Details, two-tap pay / set aside
+        ├── menu.py       # section list (More), This month, Plan, Settings, language, reset
         ├── wizard.py     # generic field-stepper create flow (shared)
         ├── transactions.py
         ├── finance.py
@@ -42,8 +45,17 @@ tracker-telegram-bot/
 
 ## Features
 
-- Typed **login / signup** (auto-detects first-run signup vs login), a session with a TTL, `/lock`.
-- **Home** (dashboard summary), **Plan** (tier + allocation), **Settings** (language, factory
+- **Home is the advisor** (`GET /advisor`, the same answer the web Home shows): what you have,
+  the salary still to come, what this month still asks for (bills, then set-asides), what is
+  free after that — and a list of next steps with a button each. Paying a bill or setting money
+  aside is two taps (the step, then the wallet); "Other amount" and "Already paid" cover the
+  rest. **Details** has the breakdown; everything else is under **☰ More**.
+- **The evening message**: at `REMINDER_HOUR` the advisor messages you — only when something
+  new needs you (repeated every 3 days while it is still due), plus a short look at the month
+  every Sunday. Salary is never asked about: record it when it arrives (`+8000000 salary`).
+- Typed **login / signup** (auto-detects first-run signup vs login), `/lock`. With
+  `OWNER_CHAT_ID` set, **you stay logged in** across restarts and deploys (`bot/storage.py`).
+- **This month** (dashboard summary), **Plan** (tier + allocation), **Settings** (language, factory
   reset — password-confirmed, and it wipes the account).
 - **Transactions**: add (guided: type → amount → category → subtype → source → date → note →
   confirm), quick add ("50000 lunch", `/add`), move money between wallets, recent (paged),
@@ -59,8 +71,8 @@ tracker-telegram-bot/
 
 ### Commands
 
-`/start` open the bot · `/menu` reopen the main menu · `/login` log in · `/lock` end the
-session now · `/cancel` abort the current flow.
+`/start` the advisor (Home) · `/menu` every section · `/login` log in · `/lock` end the
+session now (and forget the saved login) · `/cancel` abort the current flow.
 
 ### Known gaps
 
@@ -68,7 +80,9 @@ Documented so the next reader stops looking for them:
 
 - **Transactions can't be edited from the bot** — add, view and delete only. Edit one in the
   web app. (Cards, categories, finance records and the stable income can be edited here.)
-- **Sessions are in memory**, so a restart means logging in again (fine for a personal bot).
+- Only the **owner's** login is saved (`OWNER_CHAT_ID`); any other session is in memory with
+  a TTL. In Docker the saved login needs the `bot-data` volume (DEPLOY.md), or a deploy logs
+  you out.
 - Every money-writing endpoint stays refused by the backend until **Monthly stable income**
   is set — that is the product rule, not a bot limitation.
 
@@ -145,12 +159,14 @@ boot with a line naming the variable, rather than a traceback or a silent wrong 
 | `BOT_TOKEN`         | —                              | Bot token from @BotFather (**required**)                        |
 | `API_BASE_URL`      | `http://localhost:8080/api/v1` | Tracker backend base URL; must include `http://` or `https://`  |
 | `API_TIMEOUT`       | `10`                           | Seconds to wait on one API call                                 |
-| `SESSION_TTL_HOURS` | `24`                           | Hours before re-login is required                               |
+| `SESSION_TTL_HOURS` | `24`                           | Hours before re-login is required (not for the saved owner login) |
+| `STAY_LOGGED_IN`    | `true`                         | Keep the `OWNER_CHAT_ID` login across restarts, without a TTL     |
+| `SESSION_FILE`      | `data/session.json`            | Where that login, the language and reminder history are kept      |
 | `OWNER_CHAT_ID`     | —                              | The only chat served; blank = trust the first chat that logs in |
 | `TZ_OFFSET_HOURS`   | `5`                            | Hours ahead of UTC the owner lives in (Tashkent, no DST)        |
 | `LOG_LEVEL`         | `INFO`                         | `DEBUG` / `INFO` / `WARNING` / `ERROR`                          |
-| `REMINDERS_ENABLED` | `false`                        | Opt-in switch for the bot's scheduled reminders                 |
-| `REMINDER_HOUR`     | `21`                           | Local hour (0–23) reminders are delivered at                    |
+| `REMINDERS_ENABLED` | `true`                         | The evening advisor message (needs an owner chat to write to)   |
+| `REMINDER_HOUR`     | `21`                           | Local hour (0–23) it is delivered at                            |
 | `WEBHOOK_HOST`      | `0.0.0.0`                      | Local aiohttp bind host                                         |
 | `WEBHOOK_PORT`      | `8081`                         | Local aiohttp bind port                                         |
 | `WEBHOOK_PATH`      | `/webhook`                     | Fallback path if the public URL has none                        |

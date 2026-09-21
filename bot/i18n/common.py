@@ -18,7 +18,7 @@ EN: dict[str, str] = {
     # Buttons — every screen's navigation row is built out of these four
     "common.cancel": "✖️ Cancel",
     "common.back": "⬅️ Back",
-    "common.menu": "⬅️ Menu",
+    "common.menu": "🏠 Home",
     "common.confirm": "✅ Confirm",
     "common.skip": "⏭ Skip",
     "common.add": "➕ Add",
@@ -66,7 +66,7 @@ UZ: dict[str, str] = {
     "settings.backToSettings": "⬅️ Sozlamalar",
     "common.cancel": "✖️ Bekor qilish",
     "common.back": "⬅️ Orqaga",
-    "common.menu": "⬅️ Menyu",
+    "common.menu": "🏠 Bosh sahifa",
     "common.confirm": "✅ Tasdiqlash",
     "common.skip": "⏭ Oʻtkazib yuborish",
     "common.add": "➕ Qoʻshish",

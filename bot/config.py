@@ -94,10 +94,18 @@ except ValueError:
     raise _bad("OWNER_CHAT_ID", _owner,
                "expected a numeric Telegram chat id (@userinfobot will tell you yours)") from None
 
-# --- Reminders (opt-in) ---
-# Off by default: a reminder is an unprompted message, and the bot must know whose chat to
-# send it to before it sends anything at all (see OWNER_CHAT_ID).
-REMINDERS_ENABLED = _bool("REMINDERS_ENABLED", False)
+# --- Staying logged in (see bot/storage.py) ---
+# The owner's login, language and reminder history are kept in this file so a restart does not
+# log them out — but only when OWNER_CHAT_ID pins who the owner is. In Docker, put it on a
+# volume (DEPLOY.md). Set STAY_LOGGED_IN=false to go back to logins that live in memory only
+# and expire after SESSION_TTL_HOURS.
+STAY_LOGGED_IN = _bool("STAY_LOGGED_IN", True)
+SESSION_FILE = _raw("SESSION_FILE", "data/session.json")
+
+# --- The evening advisor message (bot/reminders.py) ---
+# On by default: the owner asked the advisor to message them. It still needs to know whose chat
+# to write to — OWNER_CHAT_ID, or the chat that logged in — and says nothing until then.
+REMINDERS_ENABLED = _bool("REMINDERS_ENABLED", True)
 # Local hour (in TZ_OFFSET_HOURS terms, not UTC) reminders are delivered at.
 REMINDER_HOUR = _int("REMINDER_HOUR", "21", low=0, high=23)
 

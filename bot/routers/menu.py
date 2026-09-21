@@ -301,6 +301,10 @@ async def on_menu(cb: CallbackQuery, state: FSMContext) -> None:
     chat_id = common.chat_id_of(cb)
     page = cb.data.split(":", 1)[1]
     if page == "home":
+        # Home is the advisor; the eight sections below it are "More".
+        from .advisor import show_advisor
+        await show_advisor(cb)
+    elif page == "more":
         await common.show(cb, keyboards.menu_text(chat_id), keyboards.main_menu_kb(chat_id))
     elif page == "dashboard":
         await show_home(cb)

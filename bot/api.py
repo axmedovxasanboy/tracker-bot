@@ -317,8 +317,10 @@ async def _refresh(chat_id: int, seen: str) -> str:
             raise NeedsLogin()
         try:
             data = r.json()
-            s.access, s.refresh = data["accessToken"], data["refreshToken"]
+            access, refresh = str(data["accessToken"]), str(data["refreshToken"])
         except Exception as exc:  # noqa: BLE001
             # A 2xx we cannot read is a backend bug, not a verdict on the session.
             raise ApiError(r.status_code, "Unreadable refresh response") from exc
+        # Through the store, so the owner's saved login moves to the new pair as well.
+        store.update_tokens(chat_id, access, refresh)
         return s.access

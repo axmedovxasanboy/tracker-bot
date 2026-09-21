@@ -33,8 +33,8 @@ from .config import (BOT_TOKEN, OWNER_CHAT_ID, REMINDERS_ENABLED, WEB_VIEW_URL,
                      WEBHOOK_PORT, WEBHOOK_SECRET)
 from .i18n import system as system_strings
 from .i18n import t
-from .routers import (auth, cards, categories, finance, menu, months, quickadd, transactions,
-                      wizard)
+from .routers import (advisor, auth, cards, categories, finance, menu, months, quickadd,
+                      transactions, wizard)
 from .states import QuickAdd
 
 # The reminder loop is optional by construction: it is the one part of the bot that sends
@@ -297,7 +297,7 @@ def main() -> None:
     # both. In between, the original order — auth (start/login/lock/cancel) → menu
     # (navigation) → wizard (shared create steps) → the section routers — which state filters
     # keep unambiguous anyway.
-    for r in (router, auth.router, menu.router, wizard.router,
+    for r in (router, auth.router, menu.router, advisor.router, wizard.router,
               transactions.router, finance.router, cards.router, categories.router,
               months.router, quickadd.router):
         dp.include_router(r)

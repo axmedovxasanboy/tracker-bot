@@ -16,17 +16,19 @@ Two conventions here are load-bearing:
 
 EN: dict[str, str] = {
     # --- Command descriptions: the blue menu AND the /help list ---
-    "system.cmd.start": "Log in, or open the main menu",
+    "system.cmd.start": "Log in, or see where your money stands",
     "system.cmd.add": "Record money in or out",
-    "system.cmd.menu": "Open the main menu",
+    "system.cmd.menu": "Every section",
     "system.cmd.help": "What this bot can do",
     "system.cmd.lock": "End this session",
     "system.cmd.cancel": "Stop the step you are on",
 
     # --- /help ---
     "system.help.title": "❓ <b>Tracker bot</b>",
-    "system.help.intro": "The same account as the web app, and the same figures. Anything with "
-                         "more than one step is a menu flow, and every screen carries a way back.",
+    "system.help.intro": "🏠 Home is your advisor: what you have, what's coming, what's still to "
+                         "pay and set aside, what's free — and a button for each next step. It "
+                         "also messages you in the evening when something needs you. Everything "
+                         "else is under ☰ More, with the same account and figures as the web app.",
     "system.help.sectionsTitle": "<b>Sections</b>",
     "system.help.home": "{name} — spendable money, net worth, this month so far",
     "system.help.plan": "{name} — where this month's money is meant to go, bucket by bucket",
@@ -61,17 +63,18 @@ EN: dict[str, str] = {
 }
 
 UZ: dict[str, str] = {
-    "system.cmd.start": "Kirish yoki asosiy menyu",
+    "system.cmd.start": "Kirish yoki pulingiz holati",
     "system.cmd.add": "Pul kirimi yoki chiqimini yozish",
-    "system.cmd.menu": "Asosiy menyuni ochish",
+    "system.cmd.menu": "Barcha boʻlimlar",
     "system.cmd.help": "Bot nima qila oladi",
     "system.cmd.lock": "Sessiyani yakunlash",
     "system.cmd.cancel": "Turgan qadamingizni toʻxtatish",
 
     "system.help.title": "❓ <b>Tracker bot</b>",
-    "system.help.intro": "Veb-ilova bilan bitta hisob va bitta raqamlar. Bir necha qadamdan "
-                         "iborat ishlar menyu orqali bajariladi, har bir ekranda esa orqaga "
-                         "qaytish yoʻli bor.",
+    "system.help.intro": "🏠 Bosh sahifa — maslahatchingiz: nima bor, nima keladi, yana nimani "
+                         "toʻlash va ajratish kerak, qancha boʻsh qoladi — va har bir keyingi "
+                         "qadam uchun tugma. Biror ish boʻlsa, kechqurun oʻzi yozadi. Qolgan "
+                         "hammasi ☰ Yana ichida, veb-ilova bilan bitta hisob va raqamlar.",
     "system.help.sectionsTitle": "<b>Boʻlimlar</b>",
     "system.help.home": "{name} — sarflash mumkin boʻlgan pul, sof boylik va shu oy manzarasi",
     "system.help.plan": "{name} — bu oydagi pul qayerga ketishi kerakligi, bandma-band",

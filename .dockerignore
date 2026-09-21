@@ -57,3 +57,6 @@ test_*.py
 DEPLOY.md
 README.md
 HANDOFF.md
+
+# The owner's saved login (bot/storage.py) — a refresh token, never commit or bake it in
+data/

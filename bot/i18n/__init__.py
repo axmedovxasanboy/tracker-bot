@@ -1,8 +1,8 @@
 """Per-chat UZ/EN language for the bot.
 
 Deliberately independent of the web app: the web keeps its choice in browser localStorage,
-which the bot cannot read, so each chat carries its own preference here. Like the rest of
-SessionStore this lives in memory and resets when the bot restarts (owner's call).
+which the bot cannot read, so each chat carries its own preference here. It lives in memory,
+except the pinned owner's, which bot/storage.py keeps across restarts with their login.
 
 Category names are DATA, not UI text — they come from the API with an optional `nameUz`,
 resolved by `cat_name` below.
@@ -18,7 +18,7 @@ key, or an Uzbek confirmation that has silently lost its {amount}.
 import re
 from types import ModuleType
 
-from . import auth, cards, cat, common, fin, menu, months, quickadd, system, tx, ui, wizard
+from . import adv, auth, cards, cat, common, fin, menu, months, quickadd, system, tx, ui, wizard
 
 EN = "en"
 UZ = "uz"
@@ -39,6 +39,7 @@ _AREAS: tuple[tuple[ModuleType, tuple[str, ...]], ...] = (
     (ui, ("ui.",)),
     (system, ("system.",)),
     (quickadd, ("quickadd.",)),
+    (adv, ("adv.",)),
 )
 
 # `{name}` — the only templating the strings use. Deliberately \w+ so that stray braces in
@@ -108,12 +109,28 @@ _EN, _UZ = _merge()
 _lang: dict[int, str] = {}
 
 
+def _restore_owner_lang() -> None:
+    """The pinned owner's language survives a restart (bot/storage.py); other chats' do not."""
+    from .. import storage
+    from ..config import OWNER_CHAT_ID
+    saved = storage.get("lang")
+    if OWNER_CHAT_ID is not None and saved in (EN, UZ):
+        _lang[OWNER_CHAT_ID] = saved
+
+
+_restore_owner_lang()
+
+
 def get_lang(chat_id: int | None) -> str:
     return _lang.get(chat_id, EN)
 
 
 def set_lang(chat_id: int, lang: str) -> None:
     _lang[chat_id] = lang if lang in (EN, UZ) else EN
+    from .. import storage
+    from ..config import OWNER_CHAT_ID
+    if chat_id == OWNER_CHAT_ID:
+        storage.put("lang", _lang[chat_id])
 
 
 def t(chat_id: int | None, key: str, **vars) -> str:

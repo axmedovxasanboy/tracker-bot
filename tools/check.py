@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 # The prefixes owned by bot/i18n/*.py. A literal starting with one of these is a translation
 # key; anything else in the source is just a string.
 NAMESPACES = (
-    "alloc", "auth", "cards", "cat", "common", "fin", "guard", "lang", "menu",
+    "adv", "alloc", "auth", "cards", "cat", "common", "fin", "guard", "lang", "menu",
     "months", "quickadd", "settings", "system", "tx", "ui", "wizard",
 )
 KEY_RE = re.compile(r"""["']((?:%s)\.[A-Za-z0-9_.]+)["']""" % "|".join(NAMESPACES))

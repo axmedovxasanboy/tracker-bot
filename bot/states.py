@@ -186,3 +186,14 @@ class CloseMonth(StatesGroup):
 class GoalValue(StatesGroup):
     """Single step: a savings goal's new current value (POST /investments/{id}/value)."""
     amount = State()
+
+
+class Advise(StatesGroup):
+    """The advisor's two-tap pay / set-aside flow (bot/routers/advisor.py), data keys `adv_*`.
+
+    `pick` is the wallet screen and `amount` the "other amount" prompt. The wallet buttons are
+    handled without a StateFilter and check the flow's data by hand, as quick add does, so a
+    screen that outlived a restart says so instead of spinning.
+    """
+    pick = State()
+    amount = State()

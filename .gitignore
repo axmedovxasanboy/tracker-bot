@@ -89,3 +89,6 @@ Desktop.ini
 *.swp
 *.swo
 *~
+
+# The owner's saved login (bot/storage.py) — a refresh token, never commit or bake it in
+data/

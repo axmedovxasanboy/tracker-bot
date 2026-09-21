@@ -1,4 +1,9 @@
-"""In-memory session store: one token pair per chat, plus the owner binding.
+"""Session store: one token pair per chat, plus the owner binding.
+
+Sessions live in memory, with one exception: the pinned owner's (`OWNER_CHAT_ID`) is also kept
+in `bot/storage.py`'s file and never expires, because the owner asked to stay logged in — the
+advisor messages them every evening and has to be able to call the API as them to do it. Every
+other chat keeps the in-memory, TTL-bound behaviour described below.
 
 The TTL is enforced in `get()` — the one function that actually hands out the tokens —
 rather than in a separate `is_active()` that every call site had to remember to consult.
@@ -15,7 +20,8 @@ import logging
 import time
 from dataclasses import dataclass
 
-from .config import SESSION_TTL_HOURS
+from . import storage
+from .config import OWNER_CHAT_ID, SESSION_TTL_HOURS
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +45,50 @@ class SessionStore:
         self._ttl = ttl_hours * 3600
         self._sessions: dict[int, Session] = {}
         self._owner: int | None = None
+        self._restore()
+
+    # ── Staying logged in ───────────────────────────────────────────────────
+    @staticmethod
+    def _kept(chat_id: int) -> bool:
+        """The pinned owner's session is remembered across restarts and never times out."""
+        return storage.enabled() and chat_id == OWNER_CHAT_ID
+
+    def _restore(self) -> None:
+        saved = storage.get("session")
+        if not isinstance(saved, dict) or OWNER_CHAT_ID is None:
+            return
+        try:
+            s = Session(username=str(saved["username"]), access=str(saved["access"]),
+                        refresh=str(saved["refresh"]), login_at=float(saved["login_at"]))
+        except (KeyError, TypeError, ValueError):
+            logger.warning("The saved login is incomplete — ignoring it.")
+            return
+        self._sessions[OWNER_CHAT_ID] = s
+        self.bind_owner(OWNER_CHAT_ID)
+        logger.info("Restored the owner's login (chat %s) — no need to log in again.", OWNER_CHAT_ID)
+
+    def _save(self, chat_id: int) -> None:
+        if not self._kept(chat_id):
+            return
+        s = self._sessions.get(chat_id)
+        storage.put("session", None if s is None else {
+            "username": s.username, "access": s.access, "refresh": s.refresh, "login_at": s.login_at,
+        })
+
+    def update_tokens(self, chat_id: int, access: str, refresh: str) -> None:
+        """A refresh rotated the pair: keep the new one, on disk too for the owner — the old
+        refresh token is still valid for days, but the next restart should use the newest."""
+        s = self._sessions.get(chat_id)
+        if s is None:
+            return
+        s.access, s.refresh = access, refresh
+        self._save(chat_id)
 
     # ── Sessions ────────────────────────────────────────────────────────────
     def start(self, chat_id: int, username: str, access: str, refresh: str) -> Session:
         s = Session(username=username, access=access, refresh=refresh, login_at=time.time())
         self._sessions[chat_id] = s
+        self._save(chat_id)
         # "The first chat that authenticates successfully binds itself as the owner" — and
         # this is the one place a successful authentication lands, so the binding happens
         # here rather than depending on every caller remembering it. Idempotent: a chat id
@@ -61,14 +106,16 @@ class SessionStore:
         s = self._sessions.get(chat_id)
         if s is None:
             return None
-        if self._ttl > 0 and (time.time() - s.login_at) >= self._ttl:
+        if self._ttl > 0 and not self._kept(chat_id) and (time.time() - s.login_at) >= self._ttl:
             del self._sessions[chat_id]
             logger.info("Session for chat %s expired after %.0fh", chat_id, self._ttl / 3600)
             return None
         return s
 
     def lock(self, chat_id: int) -> None:
+        """Log this chat out — and forget the saved login, so /lock survives a restart too."""
         self._sessions.pop(chat_id, None)
+        self._save(chat_id)
 
     def is_active(self, chat_id: int) -> bool:
         """Exactly the question `get()` answers, so a screen can never disagree with a write."""

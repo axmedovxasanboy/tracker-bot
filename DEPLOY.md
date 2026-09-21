@@ -47,7 +47,7 @@ TLS and reverse-proxies the public webhook path to `bot:8081`.
 | ---------------- | ------------------------------------------------------ |
 | `BOT_TOKEN`      | From @BotFather                                        |
 | `WEBHOOK_SECRET` | **Required in production.** Shared secret Telegram echoes back in the `X-Telegram-Bot-Api-Secret-Token` header. Left blank the check is skipped entirely — aiogram's `verify_secret()` returns `True` when there is nothing to compare — so anyone who learns the public URL can POST forged updates. Generate one: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `OWNER_CHAT_ID`  | Your numeric Telegram chat id. Set it and the bot refuses every other chat outright. Leave it blank and the first chat that logs in claims the bot until the next restart. Get it from [@userinfobot](https://t.me/userinfobot), or start the bot, log in, and read the `Owner chat bound to …` line in `docker logs bot` |
+| `OWNER_CHAT_ID`  | Your numeric Telegram chat id. Set it and the bot refuses every other chat outright. Leave it blank and the first chat that logs in claims the bot until the next restart. Get it from [@userinfobot](https://t.me/userinfobot), or start the bot, log in, and read the `Owner chat bound to …` line in `docker logs bot`. **Needed for the advisor:** with it set, you stay logged in across restarts and deploys and the bot messages you in the evening |
 
 These live in `~/app/.env` on the VPS, **not** in GitHub Actions secrets — the Actions secrets
 above are only for building the image and SSH-ing in. Compose reads `~/app/.env` for the
@@ -81,24 +81,38 @@ services:
       WEB_VIEW_URL: ${WEB_VIEW_URL:-}
       SESSION_TTL_HOURS: 24
       # Who the bot answers to. Blank = the first chat to log in claims it (see .env above).
+      # Set, it also keeps YOUR login across restarts (in the volume below) — the 24h above
+      # then only applies to anyone else.
       OWNER_CHAT_ID: ${OWNER_CHAT_ID:-}
       # What "today" and "this month" mean. The container runs UTC; Tashkent is +5, and
       # without this an expense recorded before 05:00 lands in yesterday — or, on the 1st,
       # in last month's envelope.
       TZ_OFFSET_HOURS: 5
       LOG_LEVEL: INFO
-      # Unprompted messages. Off unless you set both of these AND OWNER_CHAT_ID.
-      REMINDERS_ENABLED: ${REMINDERS_ENABLED:-false}
+      # The advisor's evening message: at 21:00, only when something needs you (a bill, a
+      # wallet check, money to set aside), plus a short look at the month on Sundays.
+      REMINDERS_ENABLED: ${REMINDERS_ENABLED:-true}
       REMINDER_HOUR: 21
+    volumes:
+      # Your saved login, language and which reminders went out (bot/storage.py). Without
+      # it every deploy logs you out and the evening message stops until you log in again.
+      - bot-data:/app/data
     networks:
       - app-network
     depends_on:
       - backend
 
+volumes:
+  bot-data:
+
 networks:
   app-network:
     external: true
 ```
+
+> The `bot-data` volume holds a refresh token — as good as your password for seven days.
+> It is a named volume, so it is never inside the image or the repo; `/lock` in the bot
+> deletes the login from it.
 
 > `depends_on` only orders container *start*, not readiness — the bot may still
 > boot before the backend is answering and exit; `restart: unless-stopped`
@@ -130,7 +144,11 @@ cd ~/app && docker compose restart bot
 | `BOT_TOKEN`         | yes      | From @BotFather                                      |
 | `API_BASE_URL`      | yes      | `http://backend:8080/api/v1` for in-network access   |
 | `WEBHOOK_SECRET`    | rec.     | Telegram echoes it back; the server rejects mismatches |
-| `SESSION_TTL_HOURS` | no       | Default 24                                           |
+| `SESSION_TTL_HOURS` | no       | Default 24. Not applied to the `OWNER_CHAT_ID` login while `STAY_LOGGED_IN` is on |
+| `STAY_LOGGED_IN`    | no       | Default `true`: the owner's login is kept in `SESSION_FILE` and never times out |
+| `SESSION_FILE`      | no       | Default `data/session.json` (= `/app/data/session.json` in the image) |
+| `REMINDERS_ENABLED` | no       | Default `true`: the evening advisor message         |
+| `REMINDER_HOUR`     | no       | Default `21` (local time, `TZ_OFFSET_HOURS`)        |
 | `API_TIMEOUT`       | no       | Default 10s                                          |
 | `WEBHOOK_HOST`      | no       | Default `0.0.0.0`                                    |
 | `WEBHOOK_PORT`      | no       | Default `8081` (must match `EXPOSE` + Caddy upstream)|

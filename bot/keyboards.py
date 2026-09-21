@@ -65,7 +65,8 @@ def menu_text(chat_id: int | None = None) -> str:
 
 
 def main_menu_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
-    """The main menu: capture first, then the app, then the eight sections, then Lock.
+    """The section list ("More"): capture first, then the app, then the eight sections, then
+    Home and Lock. Home itself is the advisor (bot/routers/advisor.py); this is one tap below it.
 
     The capture row is the only addition to this screen that pays for its own height. Every
     other row leads to a *page*; this one is the thing the bot exists for, and without it the
@@ -89,7 +90,8 @@ def main_menu_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
     for i in range(0, len(PAGES), 2):
         keyboard.append([InlineKeyboardButton(text=t(chat_id, key), callback_data=f"menu:{page}")
                          for page, key in PAGES[i:i + 2]])
-    keyboard.append([InlineKeyboardButton(text=t(chat_id, "menu.lock"), callback_data="lock")])
+    keyboard.append([InlineKeyboardButton(text=t(chat_id, "adv.btn.home"), callback_data="menu:home"),
+                     InlineKeyboardButton(text=t(chat_id, "menu.lock"), callback_data="lock")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 

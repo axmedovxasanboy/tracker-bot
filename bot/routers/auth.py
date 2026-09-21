@@ -229,7 +229,9 @@ async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
     chat_id = message.chat.id
     if store.is_active(chat_id):
-        await common.show(message, keyboards.menu_text(chat_id), keyboards.main_menu_kb(chat_id))
+        # Home is the advisor: what you have, what is coming, what to do next.
+        from .advisor import show_advisor
+        await show_advisor(message)
         return
     if await _needs_signup():
         # First run — the account does not exist yet, so this screen is not an invitation to
@@ -352,11 +354,16 @@ async def got_password(message: Message, state: FSMContext) -> None:
         warnings.append(t(chat_id, "auth.setIncomeNext"))
         kb = keyboards.income_guard_kb(chat_id)
     else:
-        kb = keyboards.main_menu_kb(chat_id)
+        kb = None
 
     body = t(chat_id, "auth.loginSuccess",
              verb=t(chat_id, "auth.accountCreated" if created else "auth.loggedIn"),
              username=esc(username))
+    if kb is None:
+        # An ordinary login lands on the advisor, with the greeting above it.
+        from .advisor import show_advisor
+        await show_advisor(message, _joined(body, warnings))
+        return
     await common.show(message, _joined(body, warnings), kb)
 
 
