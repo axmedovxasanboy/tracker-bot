@@ -19,10 +19,9 @@ along; nothing called it.
 **A one-field edit still sends the whole card.** `CardRequest` is validated as a complete
 object (`name`, `bankName`, `type`, `lastFourDigits`, `initialBalance` and `currency` are all
 @NotNull), so an edit reads the card back and re-sends every field with one value replaced.
-`fullNumber` and `pin` are the deliberate omission: `CardResponse` never returns them, and
-`CardService.applyRequest` writes them only when they arrive non-blank, so leaving them out
-preserves the stored, encrypted values instead of erasing them. `color` is echoed for the same
-reason — a null one would be overwritten with the server's default indigo.
+`color` is echoed for the same reason — a null one would be overwritten with the server's
+default indigo. (The card-number / PIN vault those two fields belonged to was removed on
+2026-09-22; a card is a name, its last four digits and a balance now.)
 
 **Cash is one pot, not a list.** `GET /cash-balances` returns an array because the table is
 keyed by currency, but the product has been UZS-only since the currency pivot and
@@ -339,8 +338,7 @@ def _card_payload(card: dict) -> dict:
     """Every field `PUT /cards/{id}` needs, read back off the card being edited.
 
     See the module docstring: CardRequest is a whole-object write, so a one-field edit has to
-    re-send the other five. `fullNumber` and `pin` are omitted on purpose — that is what
-    preserves them.
+    re-send the other five.
     """
     return {
         "name": card.get("name"),
