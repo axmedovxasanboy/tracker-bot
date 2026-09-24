@@ -1,8 +1,9 @@
 # Tracker — Telegram Bot (aiogram)
 
-A small **pocket advisor** for the Tracker API, built with **aiogram v3**. The owner uses it for
-three things: **record quickly, pay from a button, check wallets**. Everything else lives in the
-web app (the 🌐 Open app button). UZS-only, and bilingual (English / Oʻzbek, in ⚙️ Settings).
+A **pocket advisor** for the Tracker API, built with **aiogram v3**. Home answers the three things
+the owner does most — **record quickly, pay from a button, check wallets** — and **☰ More** carries
+everything the web app has: History, Wallets, Savings, Loans & bills, Profile and Settings (incl.
+categories). UZS-only, and bilingual (English / Oʻzbek, in ⚙️ Settings).
 
 Tracker is a **single-user** app, and so is this bot: see [Who the bot answers to](#who-the-bot-answers-to).
 
@@ -32,10 +33,14 @@ tracker-telegram-bot/
     ├── main.py           # Dispatcher + router wiring + webhook (aiohttp) server, /help, /add
     └── routers/
         ├── auth.py       # /start, typed login/signup, /lock, /menu, /cancel
-        ├── settings.py   # ⚙️ language, monthly income, help, log out
-        ├── home.py       # Home, from GET /advisor
-        ├── pay.py        # Pay buttons: bills, bank, loans, debts, savings, goals
-        ├── wallets.py    # 👛 balances + Check wallets
+        ├── settings.py   # ⚙️ language, income, categories, tracking start, danger zone, log out
+        ├── home.py       # Home, from GET /advisor, and the ☰ More menu
+        ├── history.py    # 🧾 months, In/Out/Saved, where it went, list, search, edit/delete
+        ├── savings.py    # 🎯 this month, goals, emergency fund, investments, donations
+        ├── loans.py      # 💳 bills, monthly / fast-repay loans, owed to you, people, add forms
+        ├── profile.py    # 👤 level, savings rule, to set aside, this month so far, workings
+        ├── pay.py        # Pay flows + the small form engine used by savings/loans
+        ├── wallets.py    # 👛 balances, per-wallet history, add card/money, move money, Check wallets
         └── record.py     # quick add, ➕ Add, the draft card (included last: catch-alls)
 ```
 
@@ -60,7 +65,8 @@ current step · `/login` · `/menu` (= Home).
 
 ### Known gaps
 
-- Transactions can't be edited or deleted from the bot — use the web app.
+- Special transactions (loans, savings, transfers, wallet checks) can only be deleted from the bot, not
+  edited — their linked records are edited on their own screens (or in the web app).
 - Every money-writing endpoint stays refused by the backend until **Monthly income** is set.
 
 ## Setup & run

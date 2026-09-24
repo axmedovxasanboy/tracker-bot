@@ -21,7 +21,8 @@ EN: dict[str, str] = {
         "income) and tap Save. Or ➕ Add.\n"
         "• <b>Pay</b> — tap a Pay button on Home, then the wallet.\n"
         "• <b>Check wallets</b> — 👛 Wallets shows every balance; Check wallets fixes them.\n\n"
-        "Home says how much you can spend a day. Everything else is in the web app (🌐 Open app)."
+        "Home says how much you can spend a day. ☰ More has everything the web app has: History, "
+        "Savings, Loans &amp; bills, Profile and Settings."
     ),
     "system.help.commandsTitle": "<b>Commands</b>",
     "system.help.cmdLine": "/{cmd} — {desc}",
@@ -50,8 +51,8 @@ UZ: dict[str, str] = {
         "• <b>Toʻlash</b> — Bosh sahifadagi Toʻlash tugmasini, keyin hamyonni bosing.\n"
         "• <b>Hamyonlarni tekshirish</b> — 👛 Hamyonlar har bir balansni koʻrsatadi; "
         "Hamyonlarni tekshirish ularni toʻgʻrilaydi.\n\n"
-        "Bosh sahifa kuniga qancha sarflash mumkinligini aytadi. Qolgan hammasi veb-ilovada "
-        "(🌐 Ilovani ochish)."
+        "Bosh sahifa kuniga qancha sarflash mumkinligini aytadi. ☰ Yana boʻlimida veb-ilovadagi "
+        "hamma narsa bor: Tarix, Jamgʻarmalar, Qarzlar va toʻlovlar, Profil va Sozlamalar."
     ),
     "system.help.commandsTitle": "<b>Buyruqlar</b>",
     "system.help.cmdLine": "/{cmd} — {desc}",

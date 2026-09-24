@@ -42,6 +42,15 @@ EN: dict[str, str] = {
     "home.btn.app": "🌐 Open app",
     "home.btn.settings": "⚙️",
     "home.btn.refresh": "🔄",
+    "home.btn.more": "☰ More",
+
+    # ☰ More — the web app's other pages, with the web's names.
+    "home.more.title": "☰ <b>More</b>\n\nEverything the web app has, here in the chat.",
+    "home.more.history": "🧾 History",
+    "home.more.savings": "🎯 Savings",
+    "home.more.loans": "💳 Loans & bills",
+    "home.more.profile": "👤 Profile",
+    "home.more.settings": "⚙️ Settings",
 
     # The optional evening message (bot/reminders.py) puts one of these above Home.
     "home.remind.evening": "🌙 <b>Evening check</b>",
@@ -84,6 +93,14 @@ UZ: dict[str, str] = {
     "home.btn.app": "🌐 Ilovani ochish",
     "home.btn.settings": "⚙️",
     "home.btn.refresh": "🔄",
+    "home.btn.more": "☰ Yana",
+
+    "home.more.title": "☰ <b>Yana</b>\n\nVeb-ilovadagi hamma narsa — shu yerda, chatda.",
+    "home.more.history": "🧾 Tarix",
+    "home.more.savings": "🎯 Jamgʻarmalar",
+    "home.more.loans": "💳 Qarzlar va toʻlovlar",
+    "home.more.profile": "👤 Profil",
+    "home.more.settings": "⚙️ Sozlamalar",
 
     "home.remind.evening": "🌙 <b>Kechki koʻrik</b>",
     "home.remind.weekly": "📅 <b>Haftangiz</b>",

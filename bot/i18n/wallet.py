@@ -1,6 +1,8 @@
-"""👛 Wallets and Check wallets (the wallet check-in).
+"""👛 Wallets: balances, a wallet's transactions, Add card, Add money, Update cash, Move money,
+and Check wallets (the wallet check-in).
 
-`wallet.*`
+`wallet.*` — the web's words (tracker-frontend `page.cards.*`, `shell.wallets.*`,
+`cmp.balanceTransfer.*`).
 """
 
 EN: dict[str, str] = {
@@ -14,7 +16,7 @@ EN: dict[str, str] = {
     "wallet.soFar": "Everyday spending found by checks this month: {amount}",
     "wallet.startBtn": "▶️ Start",
     "wallet.locked": "This month can’t be changed any more.",
-    "wallet.none": "You have no wallets yet — add one in the web app.",
+    "wallet.none": "You have no wallets yet — add a card first.",
     "wallet.step": "✅ <b>Check wallets</b> · {index} of {total}",
     "wallet.appSays": "The app says: {amount}",
     "wallet.ask": "How much is really in it now? Send a number ({currency}).",
@@ -32,6 +34,65 @@ EN: dict[str, str] = {
     "wallet.savedSpent": "✅ Wallets checked — {amount} saved as everyday spending.",
     "wallet.savedSurplus": "✅ Wallets checked — {amount} more than the app thought.",
     "wallet.savedMatch": "✅ Wallets checked — everything matched.",
+
+    # The screen's buttons
+    "wallet.addCardBtn": "➕ Add card",
+    "wallet.moveBtn": "⇄ Move money",
+    "wallet.topUpBtn": "➕ Add money",
+    "wallet.updateCashBtn": "✏️ Update cash",
+    "wallet.addCashBtn": "➕ Add cash",
+    "wallet.walletBtn": "{icon} {name}",
+    "wallet.tapHint": "Tap a wallet to see its transactions.",
+
+    # One wallet and its transactions
+    "wallet.cardTitle": "💳 <b>{name}</b> · {network}",
+    "wallet.cardDigits": "•••• {last4}",
+    "wallet.balance": "Balance: <b>{amount}</b>",
+    "wallet.cardTxSubtitle": "<i>Transactions · showing the card portion</i>",
+    "wallet.noCardTx": "No transactions for this card yet",
+    "wallet.cashTitle": "💵 <b>Cash</b>",
+    "wallet.startingAmount": "starting {amount}",
+    "wallet.cashTxSubtitle": "<i>Transactions · showing the cash portion</i>",
+    "wallet.noCashTx": "No cash transactions yet",
+    "wallet.cashEmptyHint": "Tell Tracker how much cash you hold. Cash transactions adjust it automatically.",
+    "wallet.pageOf": "Page {page} of {total}",
+    "wallet.cardGone": "That card is gone.",
+
+    # Update cash
+    "wallet.cashModalTitle": "💵 <b>Cash balance</b>",
+    "wallet.cashHoldLabel": "Cash you currently hold ({currency})",
+    "wallet.cashHoldHint": ("<i>The current cash balance is this starting amount, adjusted by every cash "
+                            "transaction recorded since.</i>"),
+    "wallet.cashNow": "Now: {current} · starting {initial}",
+    "wallet.cashAsk": "Send the figure, e.g. <code>250000</code>.",
+    "wallet.cashSaved": "✅ Cash balance updated",
+
+    # Add card
+    "wallet.newCardTitle": "💳 <b>New card</b>",
+    "wallet.askName": "Card nickname? e.g. <i>My card</i>",
+    "wallet.askLast4": "Last 4 digits of <b>{name}</b>? e.g. <code>4521</code>",
+    "wallet.badLast4": "Must be exactly 4 digits.",
+    "wallet.askNetwork": "Card network?",
+    "wallet.askStart": "Starting balance — how much is on <b>{name}</b> now? Send a number ({currency}).",
+    "wallet.nameTooLong": "Keep the nickname under {limit} characters.",
+    "wallet.reviewCard": "💳 <b>{name}</b> · {network} · •••• {last4}\nStarting balance: <b>{amount}</b>",
+    "wallet.createBtn": "✅ Create",
+    "wallet.cardCreated": "✅ Card created",
+
+    # Move money / Add money
+    "wallet.moveTitle": "⇄ <b>Move money</b>",
+    "wallet.topUpTitle": "➕ <b>Add money · {name}</b>",
+    "wallet.askFrom": "From which wallet?",
+    "wallet.askTo": "To which wallet?",
+    "wallet.pickRow": "{icon} {name} · {amount}",
+    "wallet.moveFromTo": "{source} → {target}",
+    "wallet.askAmount": "How much? Send the amount.",
+    "wallet.overBalance": "⚠️ More than is on {name} ({amount}).",
+    "wallet.reviewMove": "Move <b>{amount}</b>\n{source} → {target}",
+    "wallet.transferBtn": "✅ Transfer",
+    "wallet.moved": "✅ Transferred {amount} successfully",
+    "wallet.needTwo": "You need at least two wallets to move money — add a card or your cash first.",
+    "wallet.cashToCash": "Pick a card on at least one side — cash to cash moves nothing.",
 }
 
 UZ: dict[str, str] = {
@@ -45,7 +106,7 @@ UZ: dict[str, str] = {
     "wallet.soFar": "Shu oy tekshiruvlarda topilgan kundalik xarajat: {amount}",
     "wallet.startBtn": "▶️ Boshlash",
     "wallet.locked": "Bu oyni endi oʻzgartirib boʻlmaydi.",
-    "wallet.none": "Hali hamyonlaringiz yoʻq — uni veb-ilovada qoʻshing.",
+    "wallet.none": "Hali hamyonlaringiz yoʻq — avval karta qoʻshing.",
     "wallet.step": "✅ <b>Hamyonlarni tekshirish</b> · {total} dan {index}",
     "wallet.appSays": "Ilova hisobi: {amount}",
     "wallet.ask": "Hozir unda aslida qancha bor? Son yuboring ({currency}).",
@@ -63,4 +124,58 @@ UZ: dict[str, str] = {
     "wallet.savedSpent": "✅ Hamyonlar tekshirildi — {amount} kundalik xarajat sifatida saqlandi.",
     "wallet.savedSurplus": "✅ Hamyonlar tekshirildi — ilova hisoblaganidan {amount} koʻp.",
     "wallet.savedMatch": "✅ Hamyonlar tekshirildi — hammasi mos.",
+
+    "wallet.addCardBtn": "➕ Karta qoʻshish",
+    "wallet.moveBtn": "⇄ Pul oʻtkazish",
+    "wallet.topUpBtn": "➕ Pul qoʻshish",
+    "wallet.updateCashBtn": "✏️ Naqd pulni yangilash",
+    "wallet.addCashBtn": "➕ Naqd pul qoʻshish",
+    "wallet.walletBtn": "{icon} {name}",
+    "wallet.tapHint": "Tranzaksiyalarini koʻrish uchun hamyonni bosing.",
+
+    "wallet.cardTitle": "💳 <b>{name}</b> · {network}",
+    "wallet.cardDigits": "•••• {last4}",
+    "wallet.balance": "Balans: <b>{amount}</b>",
+    "wallet.cardTxSubtitle": "<i>Tranzaksiyalar · karta qismi koʻrsatilmoqda</i>",
+    "wallet.noCardTx": "Bu karta uchun hali tranzaksiya yoʻq",
+    "wallet.cashTitle": "💵 <b>Naqd pul</b>",
+    "wallet.startingAmount": "boshlangʻich {amount}",
+    "wallet.cashTxSubtitle": "<i>Tranzaksiyalar · naqd qismi koʻrsatilmoqda</i>",
+    "wallet.noCashTx": "Hali naqd tranzaksiya yoʻq",
+    "wallet.cashEmptyHint": "Trackerga qancha naqd pulingiz borligini ayting. Naqd tranzaksiyalar uni avtomatik moslashtiradi.",
+    "wallet.pageOf": "{page}-sahifa, jami {total}",
+    "wallet.cardGone": "Bu karta endi yoʻq.",
+
+    "wallet.cashModalTitle": "💵 <b>Naqd pul balansi</b>",
+    "wallet.cashHoldLabel": "Hozir qoʻlingizdagi naqd pul ({currency})",
+    "wallet.cashHoldHint": ("<i>Joriy naqd pul balansi shu boshlangʻich summa, undan keyin yozilgan har bir "
+                            "naqd tranzaksiya bilan moslashtirilgan.</i>"),
+    "wallet.cashNow": "Hozir: {current} · boshlangʻich {initial}",
+    "wallet.cashAsk": "Summani yuboring, masalan <code>250000</code>.",
+    "wallet.cashSaved": "✅ Naqd pul balansi yangilandi",
+
+    "wallet.newCardTitle": "💳 <b>Yangi karta</b>",
+    "wallet.askName": "Karta nomi? masalan <i>Mening kartam</i>",
+    "wallet.askLast4": "<b>{name}</b> ning oxirgi 4 ta raqami? masalan <code>4521</code>",
+    "wallet.badLast4": "Aynan 4 ta raqam boʻlishi kerak.",
+    "wallet.askNetwork": "Karta tarmogʻi?",
+    "wallet.askStart": "Boshlangʻich balans — hozir <b>{name}</b> da qancha bor? Son yuboring ({currency}).",
+    "wallet.nameTooLong": "Nom {limit} ta belgidan qisqaroq boʻlsin.",
+    "wallet.reviewCard": "💳 <b>{name}</b> · {network} · •••• {last4}\nBoshlangʻich balans: <b>{amount}</b>",
+    "wallet.createBtn": "✅ Yaratish",
+    "wallet.cardCreated": "✅ Karta yaratildi",
+
+    "wallet.moveTitle": "⇄ <b>Pul oʻtkazish</b>",
+    "wallet.topUpTitle": "➕ <b>Pul qoʻshish · {name}</b>",
+    "wallet.askFrom": "Qaysi hamyondan?",
+    "wallet.askTo": "Qaysi hamyonga?",
+    "wallet.pickRow": "{icon} {name} · {amount}",
+    "wallet.moveFromTo": "{source} → {target}",
+    "wallet.askAmount": "Qancha? Summani yuboring.",
+    "wallet.overBalance": "⚠️ {name} dagidan koʻp ({amount}).",
+    "wallet.reviewMove": "<b>{amount}</b> oʻtkaziladi\n{source} → {target}",
+    "wallet.transferBtn": "✅ Oʻtkazish",
+    "wallet.moved": "✅ {amount} muvaffaqiyatli oʻtkazildi",
+    "wallet.needTwo": "Pul oʻtkazish uchun kamida ikkita hamyon kerak — avval karta yoki naqd pul qoʻshing.",
+    "wallet.cashToCash": "Kamida bir tomonda karta tanlang — naqddan naqdga oʻtkazish hech narsani oʻzgartirmaydi.",
 }

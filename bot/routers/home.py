@@ -8,7 +8,10 @@ three things the bot is for: record (➕ Add, or just type "50000 lunch"), pay, 
 
 `compose()` is shared with the optional evening message (`bot/reminders.py`).
 
-Callbacks owned here: `home`.
+☰ More (`more`) is the door to every other screen: History, Wallets, Savings, Loans & bills,
+Profile, Settings and the web app. Home itself only gains the one button.
+
+Callbacks owned here: `home`, `more`.
 """
 from __future__ import annotations
 
@@ -217,3 +220,13 @@ async def on_home(cb: CallbackQuery, state: FSMContext) -> None:
     if not await common.gate(cb):
         return
     await show_home(cb)
+
+
+@router.callback_query(F.data == "more")
+async def on_more(cb: CallbackQuery, state: FSMContext) -> None:
+    await common.ack(cb)
+    await state.clear()
+    if not await common.gate(cb):
+        return
+    chat_id = common.chat_id_of(cb)
+    await common.show(cb, t(chat_id, "home.more.title"), keyboards.more_kb(chat_id))

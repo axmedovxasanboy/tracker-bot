@@ -1,14 +1,14 @@
 """Inline keyboards shared by several screens, plus `esc` and `ikb` (HTML is the parse mode).
 
 The reusable shapes (grids, nav rows) live in `bot/ui.py`; this module owns the product's own
-buttons: Home's bottom rows, log in, the income guard, Settings.
+buttons: Home's bottom rows, the ☰ More menu, log in, the income guard, Settings.
 """
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from .runtime import runtime
 
-__all__ = ["esc", "ikb", "web_app_button", "home_rows", "login_kb", "back_home_kb", "app_home_kb",
-           "income_guard_kb"]
+__all__ = ["esc", "ikb", "web_app_button", "home_rows", "more_kb", "login_kb", "back_home_kb",
+           "app_home_kb", "income_guard_kb"]
 
 
 def esc(value) -> str:
@@ -37,7 +37,7 @@ def web_app_button(chat_id: int | None) -> InlineKeyboardButton | None:
 
 
 def home_rows(chat_id: int | None) -> list[list[InlineKeyboardButton]]:
-    """Home's two bottom rows: Add · Wallets, then Open app · Settings · Refresh."""
+    """Home's two bottom rows: Add · Wallets · More, then Open app · Settings · Refresh."""
     from .i18n import t
 
     def b(key: str, data: str) -> InlineKeyboardButton:
@@ -47,7 +47,31 @@ def home_rows(chat_id: int | None) -> list[list[InlineKeyboardButton]]:
     app = web_app_button(chat_id)
     if app is not None:
         second.insert(0, app)
-    return [[b("home.btn.add", "add"), b("home.btn.wallets", "wal")], second]
+    return [[b("home.btn.add", "add"), b("home.btn.wallets", "wal"), b("home.btn.more", "more")], second]
+
+
+def more_kb(chat_id: int | None) -> InlineKeyboardMarkup:
+    """☰ More: every other screen the web app has, two to a row, Open app and Home last.
+
+    `sav` and `loan` are the entry points of the Savings and Loans & bills routers — the callback
+    data is the contract between the two, so it is spelled exactly once, here.
+    """
+    from .i18n import t
+
+    def b(key: str, data: str) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=t(chat_id, key), callback_data=data)
+
+    keyboard = [
+        [b("home.more.history", "hist"), b("home.btn.wallets", "wal")],
+        [b("home.more.savings", "sav"), b("home.more.loans", "loan")],
+        [b("home.more.profile", "prof"), b("home.more.settings", "set")],
+    ]
+    last = [b("common.home", "home")]
+    app = web_app_button(chat_id)
+    if app is not None:
+        last.insert(0, app)
+    keyboard.append(last)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def login_kb(chat_id: int | None = None) -> InlineKeyboardMarkup:
