@@ -79,23 +79,20 @@ services:
       # copy) from leaving the bot unable to boot. Must match the Caddy route below.
       WEBHOOK_URL: https://bot.tracker.xasanboy.dev/webhook
       WEB_VIEW_URL: ${WEB_VIEW_URL:-}
-      SESSION_TTL_HOURS: 24
-      # Who the bot answers to. Blank = the first chat to log in claims it (see .env above).
-      # Set, it also keeps YOUR login across restarts (in the volume below) — the 24h above
-      # then only applies to anyone else.
+      # Who the bot answers to. Blank = the first chat to log in claims it (saved in the
+      # volume below). A login lasts until /lock and survives restarts (the volume below).
       OWNER_CHAT_ID: ${OWNER_CHAT_ID:-}
       # What "today" and "this month" mean. The container runs UTC; Tashkent is +5, and
       # without this an expense recorded before 05:00 lands in yesterday — or, on the 1st,
       # in last month's envelope.
       TZ_OFFSET_HOURS: 5
       LOG_LEVEL: INFO
-      # The advisor's evening message: at 21:00, only when something needs you (a bill, a
-      # wallet check, money to set aside), plus a short look at the month on Sundays.
-      REMINDERS_ENABLED: ${REMINDERS_ENABLED:-true}
+      # The optional evening message (Home at 21:00 when something needs you). Off by default.
+      REMINDERS_ENABLED: ${REMINDERS_ENABLED:-false}
       REMINDER_HOUR: 21
     volumes:
-      # Your saved login, language and which reminders went out (bot/storage.py). Without
-      # it every deploy logs you out and the evening message stops until you log in again.
+      # Your saved login, language, last wallet and category guesses (bot/storage.py).
+      # Without it every deploy logs you out.
       - bot-data:/app/data
     networks:
       - app-network
@@ -144,10 +141,9 @@ cd ~/app && docker compose restart bot
 | `BOT_TOKEN`         | yes      | From @BotFather                                      |
 | `API_BASE_URL`      | yes      | `http://backend:8080/api/v1` for in-network access   |
 | `WEBHOOK_SECRET`    | rec.     | Telegram echoes it back; the server rejects mismatches |
-| `SESSION_TTL_HOURS` | no       | Default 24. Not applied to the `OWNER_CHAT_ID` login while `STAY_LOGGED_IN` is on |
-| `STAY_LOGGED_IN`    | no       | Default `true`: the owner's login is kept in `SESSION_FILE` and never times out |
+| `STAY_LOGGED_IN`    | no       | Default `true`: the owner's login is kept in `SESSION_FILE`; it lasts until /lock |
 | `SESSION_FILE`      | no       | Default `data/session.json` (= `/app/data/session.json` in the image) |
-| `REMINDERS_ENABLED` | no       | Default `true`: the evening advisor message         |
+| `REMINDERS_ENABLED` | no       | Default `false`: the optional evening message        |
 | `REMINDER_HOUR`     | no       | Default `21` (local time, `TZ_OFFSET_HOURS`)        |
 | `API_TIMEOUT`       | no       | Default 10s                                          |
 | `WEBHOOK_HOST`      | no       | Default `0.0.0.0`                                    |

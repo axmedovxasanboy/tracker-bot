@@ -88,7 +88,7 @@ async def on_error(event: ErrorEvent, **data: Any) -> bool:
         kb = keyboards.login_kb(chat_id)
     else:
         text = f"{t(chat_id, 'system.error.title')}\n\n{t(chat_id, 'system.error.body')}"
-        kb = keyboards.back_menu_kb(chat_id)
+        kb = keyboards.back_home_kb(chat_id)
 
     try:
         # Sent, not edited. The screen that failed may be inaccessible (a button older than

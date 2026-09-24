@@ -2,23 +2,22 @@
 
 Deliberately independent of the web app: the web keeps its choice in browser localStorage,
 which the bot cannot read, so each chat carries its own preference here. It lives in memory,
-except the pinned owner's, which bot/storage.py keeps across restarts with their login.
+except the owner's, which bot/storage.py keeps across restarts with their login.
 
 Category names are DATA, not UI text — they come from the API with an optional `nameUz`,
 resolved by `cat_name` below.
 
-The strings themselves live one module per area (`menu.py`, `tx.py`, …), each exporting a
-plain `EN` and `UZ` dict, merged flat here at import. Thirteen modules are edited by
-thirteen different hands, so the merge is the place where the invariants are enforced
-rather than assumed: same keys in both languages, same placeholders in both languages, one
-namespace per module, no key defined twice. A violation is an ImportError naming the module
+The strings themselves live one module per area (`home.py`, `record.py`, …), each exporting a
+plain `EN` and `UZ` dict, merged flat here at import. The merge is where the invariants are
+enforced rather than assumed: same keys in both languages, same placeholders in both
+languages, one namespace per module, no key defined twice. A violation is an ImportError naming the module
 and the keys — the bot refuses to start rather than shipping a screen that renders a raw
 key, or an Uzbek confirmation that has silently lost its {amount}.
 """
 import re
 from types import ModuleType
 
-from . import adv, auth, cards, cat, common, fin, menu, months, quickadd, system, tx, ui, wizard
+from . import auth, common, home, pay, record, system, wallet
 
 EN = "en"
 UZ = "uz"
@@ -28,18 +27,12 @@ UZ = "uz"
 # your own row, or the merge below refuses the import.
 _AREAS: tuple[tuple[ModuleType, tuple[str, ...]], ...] = (
     (common, ("common.", "guard.", "lang.", "settings.")),
-    (menu, ("menu.",)),
-    (tx, ("tx.", "alloc.")),
-    (fin, ("fin.",)),
-    (cards, ("cards.",)),
-    (cat, ("cat.",)),
-    (months, ("months.",)),
-    (wizard, ("wizard.",)),
     (auth, ("auth.",)),
-    (ui, ("ui.",)),
     (system, ("system.",)),
-    (quickadd, ("quickadd.",)),
-    (adv, ("adv.",)),
+    (home, ("home.",)),
+    (pay, ("pay.",)),
+    (record, ("record.",)),
+    (wallet, ("wallet.",)),
 )
 
 # `{name}` — the only templating the strings use. Deliberately \w+ so that stray braces in
@@ -110,12 +103,12 @@ _lang: dict[int, str] = {}
 
 
 def _restore_owner_lang() -> None:
-    """The pinned owner's language survives a restart (bot/storage.py); other chats' do not."""
+    """The owner's language survives a restart (bot/storage.py); other chats' do not."""
     from .. import storage
-    from ..config import OWNER_CHAT_ID
+    owner = storage.owner()
     saved = storage.get("lang")
-    if OWNER_CHAT_ID is not None and saved in (EN, UZ):
-        _lang[OWNER_CHAT_ID] = saved
+    if owner is not None and saved in (EN, UZ):
+        _lang[owner] = saved
 
 
 _restore_owner_lang()
@@ -128,8 +121,7 @@ def get_lang(chat_id: int | None) -> str:
 def set_lang(chat_id: int, lang: str) -> None:
     _lang[chat_id] = lang if lang in (EN, UZ) else EN
     from .. import storage
-    from ..config import OWNER_CHAT_ID
-    if chat_id == OWNER_CHAT_ID:
+    if chat_id == storage.owner():
         storage.put("lang", _lang[chat_id])
 
 

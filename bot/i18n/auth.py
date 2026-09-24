@@ -11,7 +11,7 @@ in English prose and gives no code to key off, so `bot/routers/auth.py` matches 
 sentence; when the wording on the Java side changes the bot falls back to printing it
 verbatim, which is what it did for all four before.
 
-The evening message's strings are `adv.remind.*` (bot/i18n/adv.py), with the advisor it sends.
+`auth.loggedOut` is sent when the backend rejects the saved login (bot/keepalive.py).
 """
 
 EN: dict[str, str] = {
@@ -23,8 +23,8 @@ EN: dict[str, str] = {
     # the welcome screen should not read like an invitation to the world.
     "auth.welcome": (
         "👋 <b>Tracker</b> — one person's money, in one chat.\n\n"
-        "This bot serves a single account: its income, subscriptions, wallets and the monthly "
-        "envelope built on them. Log in with that account to continue."
+        "Record in one message, pay from a button, check your wallets. This bot serves a single "
+        "account — log in with it to continue. You stay logged in until you log out."
     ),
     "auth.welcomeFirstRun": (
         "👋 <b>Tracker</b> — one person's money, in one chat.\n\n"
@@ -49,16 +49,16 @@ EN: dict[str, str] = {
     ),
     "auth.accountCreated": "Account created",
     "auth.loggedIn": "Logged in",
-    "auth.loginSuccess": "✅ {verb} as <b>{username}</b>. Session lasts 24h (or until /lock).",
+    "auth.loginSuccess": "✅ {verb} as <b>{username}</b>. You stay logged in until /lock.",
     "auth.setIncomeNext": (
-        "Nothing can be recorded yet: every money-writing screen is refused until your monthly "
-        "stable income is set, because your tier and every allocation figure are worked out from "
-        "it. Set it now and the rest of the bot opens up."
+        "Nothing can be recorded until your monthly income is set — the daily figure and your "
+        "savings are worked out from it. Set it now."
     ),
+    "auth.loggedOut": "🔒 Your login has run out. Log in again to keep recording.",
     "auth.tryAgain": "Tap /login to try again.",
     "auth.serverUnreachable": "❌ Couldn't reach the server. Is the backend running?",
-    "auth.locked": "🔒 Locked. You'll need to log in again.",
-    "auth.lockedToast": "Locked",
+    "auth.locked": "🔒 Logged out. Log in again whenever you like.",
+    "auth.lockedToast": "Logged out",
 
     # ── The backend's own authentication sentences ──────────────────────────
     "auth.err.invalidCredentials": "❌ Wrong username or password.",
@@ -97,8 +97,9 @@ UZ: dict[str, str] = {
     "auth.setupButton": "🆕 Botni sozlash",
     "auth.welcome": (
         "👋 <b>Tracker</b> — bitta odamning puli, bitta chatda.\n\n"
-        "Bu bot faqat bitta hisobga xizmat qiladi: uning daromadi, obunalari, hamyonlari va shu "
-        "asosda tuzilgan oylik konverti. Davom etish uchun oʻsha hisob bilan kiring."
+        "Bitta xabar bilan yozing, tugma bilan toʻlang, hamyonlaringizni tekshiring. Bu bot faqat "
+        "bitta hisobga xizmat qiladi — davom etish uchun oʻsha hisob bilan kiring. Chiqmaguningizcha "
+        "tizimda qolasiz."
     ),
     "auth.welcomeFirstRun": (
         "👋 <b>Tracker</b> — bitta odamning puli, bitta chatda.\n\n"
@@ -123,16 +124,16 @@ UZ: dict[str, str] = {
     ),
     "auth.accountCreated": "hisobingiz yaratildi",
     "auth.loggedIn": "tizimga kirdingiz",
-    "auth.loginSuccess": "✅ <b>{username}</b> — {verb}. Sessiya 24 soat (yoki /lock buyrugʻigacha) davom etadi.",
+    "auth.loginSuccess": "✅ <b>{username}</b> — {verb}. /lock buyrugʻigacha tizimda qolasiz.",
     "auth.setIncomeNext": (
-        "Hozircha hech narsani qayd etib boʻlmaydi: barqaror oylik daromadingiz kiritilmaguncha "
-        "pul yozadigan har bir ekran rad etiladi, chunki darajangiz ham, har bir ajratma "
-        "raqami ham oʻshandan hisoblanadi. Uni hozir kiriting va botning qolgan qismi ochiladi."
+        "Oylik daromadingiz kiritilmaguncha hech narsa yozib boʻlmaydi — kunlik summa va "
+        "jamgʻarmalaringiz shundan hisoblanadi. Uni hozir kiriting."
     ),
+    "auth.loggedOut": "🔒 Kirish muddati tugadi. Yozishda davom etish uchun qaytadan kiring.",
     "auth.tryAgain": "Qayta urinish uchun /login bosing.",
     "auth.serverUnreachable": "❌ Serverga ulanib boʻlmadi. Backend ishlayaptimi?",
-    "auth.locked": "🔒 Qulflandi. Qayta kirishingiz kerak boʻladi.",
-    "auth.lockedToast": "Qulflandi",
+    "auth.locked": "🔒 Tizimdan chiqdingiz. Istalgan vaqtda qaytadan kiring.",
+    "auth.lockedToast": "Chiqildi",
 
     # ── The backend's own authentication sentences ──────────────────────────
     "auth.err.invalidCredentials": "❌ Login yoki parol notoʻgʻri.",

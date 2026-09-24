@@ -1,10 +1,8 @@
 # Tracker — Telegram Bot (aiogram)
 
-A native Telegram client for the Tracker API, built with **aiogram v3**. The bot logs into the
-Spring Boot backend with your account and drives everything through inline-button menus
-mirroring the web app's eight pages: Home, Plan, Months, Transactions, Wallets, Finance,
-Categories, Settings. It is UZS-only — every amount is entered and displayed in UZS, with no
-currency selection — and fully bilingual (English / Oʻzbek, switched in Settings).
+A small **pocket advisor** for the Tracker API, built with **aiogram v3**. The owner uses it for
+three things: **record quickly, pay from a button, check wallets**. Everything else lives in the
+web app (the 🌐 Open app button). UZS-only, and bilingual (English / Oʻzbek, in ⚙️ Settings).
 
 Tracker is a **single-user** app, and so is this bot: see [Who the bot answers to](#who-the-bot-answers-to).
 
@@ -19,72 +17,51 @@ tracker-telegram-bot/
 └── bot/
     ├── config.py         # env settings, parsed and validated at import
     ├── clock.py          # "today" in Tashkent time — the container runs on UTC
-    ├── session.py        # sessions (TTL + /lock); the owner's is kept by storage.py
-    ├── storage.py        # the owner's saved login, language, reminder history (one JSON file)
-    ├── reminders.py      # the evening advisor message
-    ├── api.py            # httpx API client: auth + request() with 401→refresh
-    ├── money.py          # the one amount parser + the one money formatter
-    ├── keyboards.py      # the bot's own menus (main menu, login, settings, language)
-    ├── ui.py             # reusable keyboard shapes: grid, nav row, pager, confirm row
-    ├── common.py         # show()/edit() (edit-or-send), ack(), begin_write(), gate()
+    ├── session.py        # sessions (until /lock) and the owner binding
+    ├── storage.py        # the owner's saved login, binding, language, preferences (one JSON file)
+    ├── keepalive.py      # refreshes the login before the 7-day refresh token runs out
+    ├── reminders.py      # the optional evening message (off by default)
+    ├── api.py            # httpx API client: auth + request() with token refresh
+    ├── money.py          # the one amount parser + the money formatter
+    ├── keyboards.py      # Home's buttons, log in, the income guard
+    ├── ui.py             # grid, nav row, short dates
+    ├── common.py         # show() (edit-or-send), ack(), begin_write(), gate()
     ├── states.py         # FSM StatesGroups
-    ├── runtime.py        # startup-fetched config (web-view URL) shared with keyboards
+    ├── runtime.py        # startup-fetched config (web-view URL)
     ├── i18n/             # EN + Oʻzbek strings, one module per area, merged at import
-    ├── main.py           # Dispatcher + router wiring + webhook (aiohttp) server
+    ├── main.py           # Dispatcher + router wiring + webhook (aiohttp) server, /help, /add
     └── routers/
         ├── auth.py       # /start, typed login/signup, /lock, /menu, /cancel
-        ├── advisor.py    # Home = the advisor, its Details, two-tap pay / set aside
-        ├── menu.py       # section list (More), This month, Plan, Settings, language, reset
-        ├── wizard.py     # generic field-stepper create flow (shared)
-        ├── transactions.py
-        ├── finance.py
-        ├── cards.py      # Wallets: cards + cash balances
-        ├── categories.py
-        └── months.py     # month summary, permanent close, history
+        ├── settings.py   # ⚙️ language, monthly income, help, log out
+        ├── home.py       # Home, from GET /advisor
+        ├── pay.py        # Pay buttons: bills, bank, loans, debts, savings, goals
+        ├── wallets.py    # 👛 balances + Check wallets
+        └── record.py     # quick add, ➕ Add, the draft card (included last: catch-alls)
 ```
 
 ## Features
 
-- **Home is the advisor** (`GET /advisor`, the same answer the web Home shows): what you have,
-  the salary still to come, what this month still asks for (bills, then set-asides), what is
-  free after that — and a list of next steps with a button each. Paying a bill or setting money
-  aside is two taps (the step, then the wallet); "Other amount" and "Already paid" cover the
-  rest. **Details** has the breakdown; everything else is under **☰ More**.
-- **The evening message**: at `REMINDER_HOUR` the advisor messages you — only when something
-  new needs you (repeated every 3 days while it is still due), plus a short look at the month
-  every Sunday. Salary is never asked about: record it when it arrives (`+8000000 salary`).
-- Typed **login / signup** (auto-detects first-run signup vs login), `/lock`. With
-  `OWNER_CHAT_ID` set, **you stay logged in** across restarts and deploys (`bot/storage.py`).
-- **This month** (dashboard summary), **Plan** (tier + allocation), **Settings** (language, factory
-  reset — password-confirmed, and it wipes the account).
-- **Transactions**: add (guided: type → amount → category → subtype → source → date → note →
-  confirm), quick add ("50000 lunch", `/add`), move money between wallets, recent (paged),
-  view, delete.
-- **Finance**: 9 sections — debts, loans given, loans taken, bank loans, subscriptions,
-  donations, investments, savings goals, emergency fund — each with create (shared wizard),
-  edit and delete, plus repay / mark returned / pay / contribute / update goal value and
-  "already paid" marks.
-- **Wallets**: cards list, view, add, edit, delete; cash balances (set/upsert).
-- **Categories**: two-level list, add (root/sub + bonus-income flag), edit, delete.
-- **Months**: current-month summary, **permanent close** (you enter the real end-of-month
-  balance of every wallet), and history.
+- **Home** (`GET /advisor`, the same answer the web Home shows): how much you can spend a day
+  and until when, the pace or "short" warning, Coming up, Savings this month, You have. Pay
+  buttons sit only where the web has them (this month, still to pay; at most six).
+- **Quick add**: type `50000 lunch` → a draft with the category guessed from keywords (EN, UZ,
+  transliterations) or from the word last time, the last-used wallet (else the card with the
+  most on it — never cash by default) and today; one tap on Save. `+2000000 salary` is income.
+- **➕ Add**: Expense / Income → amount → category → wallet → the same draft card.
+- **Pay**: tap Pay, tap the wallet (last used first) — bills, bank installments, borrowed money,
+  debts, donation, investments / emergency fund (your own accounts), goals.
+- **👛 Wallets**: every balance, "You have", and Check wallets (type each wallet's real balance).
+- A login lasts **until /lock**, across restarts and deploys (`bot/storage.py`, `bot/keepalive.py`).
 
 ### Commands
 
-`/start` the advisor (Home) · `/menu` every section · `/login` log in · `/lock` end the
-session now (and forget the saved login) · `/cancel` abort the current flow.
+`/start` Home · `/add` record · `/settings` · `/help` · `/lock` log out · `/cancel` abort the
+current step · `/login` · `/menu` (= Home).
 
 ### Known gaps
 
-Documented so the next reader stops looking for them:
-
-- **Transactions can't be edited from the bot** — add, view and delete only. Edit one in the
-  web app. (Cards, categories, finance records and the stable income can be edited here.)
-- Only the **owner's** login is saved (`OWNER_CHAT_ID`); any other session is in memory with
-  a TTL. In Docker the saved login needs the `bot-data` volume (DEPLOY.md), or a deploy logs
-  you out.
-- Every money-writing endpoint stays refused by the backend until **Monthly stable income**
-  is set — that is the product rule, not a bot limitation.
+- Transactions can't be edited or deleted from the bot — use the web app.
+- Every money-writing endpoint stays refused by the backend until **Monthly income** is set.
 
 ## Setup & run
 
@@ -159,13 +136,12 @@ boot with a line naming the variable, rather than a traceback or a silent wrong 
 | `BOT_TOKEN`         | —                              | Bot token from @BotFather (**required**)                        |
 | `API_BASE_URL`      | `http://localhost:8080/api/v1` | Tracker backend base URL; must include `http://` or `https://`  |
 | `API_TIMEOUT`       | `10`                           | Seconds to wait on one API call                                 |
-| `SESSION_TTL_HOURS` | `24`                           | Hours before re-login is required (not for the saved owner login) |
-| `STAY_LOGGED_IN`    | `true`                         | Keep the `OWNER_CHAT_ID` login across restarts, without a TTL     |
-| `SESSION_FILE`      | `data/session.json`            | Where that login, the language and reminder history are kept      |
+| `STAY_LOGGED_IN`    | `true`                         | Keep the owner's login across restarts; a login lasts until /lock |
+| `SESSION_FILE`      | `data/session.json`            | Where that login, the owner binding and preferences are kept      |
 | `OWNER_CHAT_ID`     | —                              | The only chat served; blank = trust the first chat that logs in |
 | `TZ_OFFSET_HOURS`   | `5`                            | Hours ahead of UTC the owner lives in (Tashkent, no DST)        |
 | `LOG_LEVEL`         | `INFO`                         | `DEBUG` / `INFO` / `WARNING` / `ERROR`                          |
-| `REMINDERS_ENABLED` | `true`                         | The evening advisor message (needs an owner chat to write to)   |
+| `REMINDERS_ENABLED` | `false`                        | The optional evening message (needs an owner chat to write to)  |
 | `REMINDER_HOUR`     | `21`                           | Local hour (0–23) it is delivered at                            |
 | `WEBHOOK_HOST`      | `0.0.0.0`                      | Local aiohttp bind host                                         |
 | `WEBHOOK_PORT`      | `8081`                         | Local aiohttp bind port                                         |

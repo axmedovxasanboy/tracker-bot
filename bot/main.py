@@ -7,9 +7,9 @@ env) and registers the webhook on boot. To stop all Telegram traffic, stop the p
 
 This module also owns the things that are true of the bot as a whole rather than of any one
 screen: who is allowed to talk to it (`middlewares`), what happens when a handler throws
-(`errors`), the /help screen that makes the command surface discoverable at all, and the two
-commands that have to outrank every open form — /help and /add — which is a property of the
-router ORDER and so cannot live in the router that draws their screens.
+(`errors`), keeping the login alive (`keepalive`), the /help screen, and the two commands that
+have to outrank every open form — /help and /add — which is a property of the router ORDER and
+so cannot live in the router that draws their screens.
 """
 import asyncio
 import logging
@@ -27,15 +27,14 @@ from aiogram.types import BotCommand, CallbackQuery, MenuButtonCommands, Message
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-from . import api, common, errors, keyboards, middlewares, runtime
+from . import api, common, errors, keepalive, keyboards, middlewares, runtime
 from .config import (BOT_TOKEN, OWNER_CHAT_ID, REMINDERS_ENABLED, WEB_VIEW_URL,
                      WEBHOOK_HOST, WEBHOOK_PATH, WEBHOOK_URL,
                      WEBHOOK_PORT, WEBHOOK_SECRET)
 from .i18n import system as system_strings
 from .i18n import t
-from .routers import (advisor, auth, cards, categories, finance, menu, months, quickadd,
-                      transactions, wizard)
-from .states import QuickAdd
+from .routers import auth, home, pay, record, settings, wallets
+from .states import Record
 
 # The reminder loop is optional by construction: it is the one part of the bot that sends
 # messages nobody asked for, and a scheduler that fails to import must not be the reason the
@@ -50,10 +49,11 @@ else:
 
 logger = logging.getLogger("tracker-bot")
 
-# The blue command menu, in the order Telegram lists it. Each name also indexes
-# `system.cmd.<name>` in bot/i18n/system.py, which is what /help prints, so the menu and the
-# help screen cannot describe the same command differently.
-COMMANDS = ("start", "add", "menu", "help", "lock", "cancel")
+# The blue command menu, in the order Telegram lists it, with the `system.cmd.*` key that
+# describes each — read by both setMyCommands and /help, so the two cannot disagree.
+COMMANDS = (("start", "system.cmd.start"), ("add", "system.cmd.add"),
+            ("settings", "system.cmd.settings"), ("help", "system.cmd.help"),
+            ("lock", "system.cmd.lock"), ("cancel", "system.cmd.cancel"))
 
 # How long shutdown waits for updates that are already running. Long enough for a month-close
 # to finish its POST and tell the owner what it did; short enough that `docker stop` does not
@@ -65,37 +65,17 @@ SHUTDOWN_GRACE = 8.0
 # swallowed by the login prompt.
 router = Router(name="system")
 
-# The states quick add runs in, as the dispatcher spells them ("QuickAdd:confirm", …). Read
-# from the group rather than written out, so renaming a state cannot silently turn the check
-# below into "always clear".
-_QUICKADD_STATES = frozenset(member.state for member in QuickAdd.__all_states__)
+# The states recording runs in ("Record:card", …). Read from the group rather than written
+# out, so renaming a state cannot silently turn the check below into "always clear".
+_RECORD_STATES = frozenset(member.state for member in Record.__all_states__)
 
 
 def _help_text(chat_id: int | None) -> str:
-    """The /help screen: what the bot does, what each command is for, and how to get out.
-
-    Section names come from `menu.page.*` rather than being written out here, so a screen the
-    web app renamed (Dashboard→Home, Overview→Plan, Cards→Wallets) cannot be described in
-    /help by a word that is no longer on its button.
-    """
-    sections = (
-        ("system.help.home", "menu.page.dashboard"),
-        ("system.help.plan", "menu.page.overview"),
-        ("system.help.months", "menu.page.months"),
-        ("system.help.transactions", "menu.page.transactions"),
-        ("system.help.wallets", "menu.page.cards"),
-        ("system.help.finance", "menu.page.finance"),
-        ("system.help.categories", "menu.page.categories"),
-        ("system.help.settings", "menu.page.settings"),
-    )
-    lines = [t(chat_id, "system.help.title"), "", t(chat_id, "system.help.intro"), "",
-             t(chat_id, "system.help.sectionsTitle")]
-    lines += [t(chat_id, key, name=t(chat_id, page)) for key, page in sections]
-    lines += ["", t(chat_id, "system.help.commandsTitle")]
-    lines += [t(chat_id, "system.help.cmdLine", cmd=name, desc=t(chat_id, f"system.cmd.{name}"))
-              for name in COMMANDS]
-    lines += ["", t(chat_id, "system.help.quickTitle"), t(chat_id, "system.help.quick"),
-              "", t(chat_id, "system.help.stuck")]
+    """The /help screen: the three things the bot does, the commands, and the way out."""
+    lines = [t(chat_id, "system.help.title"), "", t(chat_id, "system.help.body"), "",
+             t(chat_id, "system.help.commandsTitle")]
+    lines += [t(chat_id, "system.help.cmdLine", cmd=name, desc=t(chat_id, key)) for name, key in COMMANDS]
+    lines += ["", t(chat_id, "system.help.stuck")]
     return "\n".join(lines)
 
 
@@ -105,59 +85,36 @@ def _help_text(chat_id: int | None) -> str:
 @router.message(Command("help"))
 async def help_cmd(message: Message) -> None:
     chat_id = common.chat_id_of(message)
-    await common.show(message, _help_text(chat_id), keyboards.back_menu_kb(chat_id))
+    await common.show(message, _help_text(chat_id), keyboards.back_home_kb(chat_id))
 
 
 @router.callback_query(F.data == "sys:help")
 async def help_cb(cb: CallbackQuery) -> None:
     chat_id = common.chat_id_of(cb)
     await common.ack(cb)
-    await common.show(cb, _help_text(chat_id), keyboards.back_menu_kb(chat_id))
+    await common.show(cb, _help_text(chat_id), keyboards.back_home_kb(chat_id))
 
 
 # ── /add ────────────────────────────────────────────────────────────────────
-# The screens live in `quickadd`, which is included LAST because it ends in a bare-text
-# catch-all — right for the catch-all, and fatal for the command. By the time the dispatcher
-# reaches the last router it has already offered the update to twenty-odd state-filtered
-# `@router.message` handlers, and only auth.py checks whether what it is about to store is a
-# command (its `_DOWNSTREAM_COMMANDS` whitelists "add" precisely so it falls through). So
-# `/add` tapped from the blue menu at "Send the category name" was saved as a category called
-# "/add"; at a description step it became a transaction's description; at the reset prompt it
-# was POSTed to /settings/reset as the password. Every other published command works from
-# anywhere for one reason only — it is registered on a router included before those handlers.
-#
-# So the ENTRY POINT moves here, to the router included first, and delegates. The two do not
-# have to share a router: `quickadd.add_cmd` is an ordinary coroutine, and its own
-# registration stays where it is as a harmless second line of defence. The argument form is
-# preserved because the same coroutine parses it: bare `/add` opens the quick-add screen,
-# `/add 50000 lunch` goes straight to a filled draft.
+# The screens live in `record`, which is included LAST because it ends in a bare-text catch-all.
+# The command has to outrank every state-filtered text handler (a swallowed /add would be
+# written into whatever field was open), so the ENTRY POINT is here, on the router included
+# first, and delegates. Bare `/add` opens ➕ Add; `/add 50000 lunch` goes straight to a draft.
 @router.message(Command("add"))
 async def add_cmd(message: Message, state: FSMContext, command: CommandObject) -> None:
-    """Quick add, reachable from every state.
-
-    Gate first, clear second. Someone who types /add at the login prompt should be told to log
-    in and still have the half-finished login they were in the middle of; `gate` renders that
-    screen and returns False before anything is thrown away.
-
-    Then a flow left open elsewhere is ended, because quick add is an escape from it and not a
-    step inside it: without this, `/add` typed halfway through the month close would draw the
-    draft card over a flow whose next typed message is still read as a wallet balance. Quick
-    add's own states are the exception — replacing one draft with another is exactly what
-    `_new_draft` does, and clearing here would throw away the `qa_ui` message id it uses to
-    take the buttons off the card it is superseding.
-    """
+    """Gate first, clear second: /add typed at the login prompt keeps the half-finished login.
+    A flow left open elsewhere is ended; a draft being replaced by another is not."""
     if not await common.gate(message):
         return
     current = await state.get_state()
-    if current is not None and current not in _QUICKADD_STATES:
+    if current is not None and current not in _RECORD_STATES:
         await state.clear()
-    await quickadd.add_cmd(message, state, command)
+    await record.add_cmd(message, state, command)
 
 
 def _commands(table: dict[str, str]) -> list[BotCommand]:
     """One language's command list. Descriptions are plain text — Telegram parses no HTML."""
-    return [BotCommand(command=name, description=table[f"system.cmd.{name}"])
-            for name in COMMANDS]
+    return [BotCommand(command=name, description=table[key]) for name, key in COMMANDS]
 
 
 async def _register_commands(bot: Bot) -> None:
@@ -171,7 +128,7 @@ async def _register_commands(bot: Bot) -> None:
     The menu button is set unconditionally, and to `MenuButtonCommands` rather than the Web
     App button this used to install. Two reasons. A Web App menu button REPLACES the command
     list in the UI, and the commands are the only rescue for someone stranded mid-flow — the
-    web app is still one tap away as the "Open App" button at the top of the main menu. And
+    web app is still one tap away as the "Open app" button on Home. And
     `setChatMenuButton` stores state on Telegram's side that outlives the process: skipping
     the call when no web-view URL is configured is not the same as clearing it, which is how
     a stale "Open App" ends up pointing at a URL that died months ago.
@@ -288,25 +245,20 @@ def main() -> None:
     errors.setup(dp)
 
     # Order matters at both ends. `system` first, because /help and /add must outrank the
-    # state-filtered text handlers that would otherwise eat them — a command that only works
-    # when you are not stuck is no use to someone who is, and a swallowed /add is written into
-    # whatever field was open. `quickadd` LAST, because it ends in a bare text handler that
-    # answers anything typed at the menu; a router after it would never see a typed message
-    # again. That pair is why /add is entered from `system` and delegated (see add_cmd): the
-    # command needs to be first and the catch-all needs to be last, and one router cannot be
-    # both. In between, the original order — auth (start/login/lock/cancel) → menu
-    # (navigation) → wizard (shared create steps) → the section routers — which state filters
-    # keep unambiguous anyway.
-    for r in (router, auth.router, menu.router, advisor.router, wizard.router,
-              transactions.router, finance.router, cards.router, categories.router,
-              months.router, quickadd.router):
+    # state-filtered text handlers that would otherwise eat them. `record` LAST, because it ends
+    # in a bare text handler that answers anything typed and a catch-all for old buttons; a
+    # router after it would never see an update again. In between, state filters keep the
+    # routers unambiguous.
+    for r in (router, auth.router, settings.router, home.router, pay.router, wallets.router,
+              record.router):
         dp.include_router(r)
 
     handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=secret)
     reminders_task: asyncio.Task[Any] | None = None
+    keepalive_task: asyncio.Task[Any] | None = None
 
     async def on_startup() -> None:
-        nonlocal reminders_task
+        nonlocal reminders_task, keepalive_task
         await bot.set_webhook(
             url=webhook_url,
             secret_token=secret,
@@ -320,6 +272,8 @@ def main() -> None:
         # Cosmetic next to the webhook, and allowed to fail as such: a flood-limited command
         # list is not a reason to refuse to serve.
         await _quietly("register the command menu", _register_commands, bot)
+        # Held for the life of the process: asyncio keeps only a weak reference to a task.
+        keepalive_task = await keepalive.start(bot)
         if reminders is not None:
             try:
                 # Held for the life of the process: asyncio keeps only a weak reference to a
@@ -340,6 +294,7 @@ def main() -> None:
         # 1. Stop the inflow first, so nothing new starts while we are draining. Telegram then
         #    holds updates instead of hammering a dying upstream, and delivers them on boot.
         await _quietly("delete the webhook", bot.delete_webhook)
+        await _quietly("stop the keep-alive", keepalive.stop)
         if reminders is not None:
             await _quietly("stop the reminder loop", reminders.stop)
 

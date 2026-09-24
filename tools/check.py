@@ -10,7 +10,7 @@ source and imports the i18n package.
 placeholders, and namespace ownership. What it cannot see is a key a router *references* but
 nobody defined, because `t()` is documented to fall back to returning the key itself. That
 fallback is right at runtime — a missing string should never crash the bot mid-payment — but it
-means a whole screen can render `fin.markKind.debt` at the owner and still pass every import
+means a whole screen can render `home.upcoming.title` raw at the owner and still pass every import
 check. That happened once, to 112 keys across two sections, and this file exists so it cannot
 happen quietly again.
 """
@@ -27,8 +27,7 @@ sys.path.insert(0, str(ROOT))
 # The prefixes owned by bot/i18n/*.py. A literal starting with one of these is a translation
 # key; anything else in the source is just a string.
 NAMESPACES = (
-    "adv", "alloc", "auth", "cards", "cat", "common", "fin", "guard", "lang", "menu",
-    "months", "quickadd", "settings", "system", "tx", "ui", "wizard",
+    "auth", "common", "guard", "home", "lang", "pay", "record", "settings", "system", "wallet",
 )
 KEY_RE = re.compile(r"""["']((?:%s)\.[A-Za-z0-9_.]+)["']""" % "|".join(NAMESPACES))
 

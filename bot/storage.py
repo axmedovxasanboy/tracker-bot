@@ -1,18 +1,18 @@
-"""The little the bot remembers across restarts, in one JSON file.
+"""The little the bot remembers about its owner, in one JSON file.
 
-Everything else stays in memory on purpose. This file holds exactly three things, all about the
-owner, and only when the owner has been pinned with `OWNER_CHAT_ID` (a chat that merely claimed
-the bot by logging in first is never written down):
+Everything here is about the one person the bot serves:
 
-* **the login** — the token pair, so a restart or a redeploy does not log the owner out. The
-  owner asked for "stay logged in": the advisor messages them every evening, and it cannot do
-  that as someone the bot has forgotten. The refresh token rotates on every use and lives seven
-  days, so an evening check that refreshes it keeps the login alive indefinitely;
-* **the language** they picked, which used to reset to English on every restart;
-* **which reminders went out when**, so a restart at 21:30 does not repeat the evening message.
+* **who that is** — `OWNER_CHAT_ID`, or else the chat that logged in first. The binding is written
+  down, so a restart does not reopen the door to whoever writes next;
+* **the login** — the token pair, so a restart or a redeploy does not log the owner out. A login
+  lasts until /lock: `bot/keepalive.py` refreshes it before the seven-day refresh token runs out;
+* **preferences** — the language, the wallet used last, which category a word meant last time,
+  the savings account used last;
+* **which reminders went out when**, for the optional evening message.
 
-The file is written atomically (temp file + rename) with 0600 permissions: it holds a refresh
-token, which is as good as the password for seven days. /lock deletes the login from it.
+Values are always kept in memory; the file is written only when `STAY_LOGGED_IN` is on and an
+owner is known. It is written atomically (temp file + rename) with 0600 permissions: it holds a
+refresh token, which is as good as the password for seven days. /lock deletes the login from it.
 
 `SESSION_FILE` points at it; in Docker, mount a volume there (see DEPLOY.md) or the file dies
 with the container and the owner logs in again after every deploy — annoying, never unsafe.
@@ -35,8 +35,8 @@ _loaded = False
 
 
 def enabled() -> bool:
-    """Whether anything is persisted at all: an owner is pinned and they want to stay logged in."""
-    return STAY_LOGGED_IN and OWNER_CHAT_ID is not None and bool(SESSION_FILE)
+    """Whether anything is written to disk at all."""
+    return STAY_LOGGED_IN and bool(SESSION_FILE)
 
 
 def _path() -> Path:
@@ -63,30 +63,75 @@ def _load() -> None:
     if not isinstance(data, dict):
         return
     # A file written for a different owner (the id in .env changed) is not this owner's.
-    if data.get("owner_chat_id") != OWNER_CHAT_ID:
+    saved_owner = data.get("owner_chat_id")
+    if OWNER_CHAT_ID is not None and saved_owner != OWNER_CHAT_ID:
         log.info("%s belongs to another chat id — ignoring it.", SESSION_FILE)
+        return
+    if not isinstance(saved_owner, int):
         return
     _state = data
 
 
-def get(key: str, default: Any = None) -> Any:
+def _ensure() -> None:
     if not _loaded:
         _load()
+
+
+def owner() -> int | None:
+    """The owner's chat id: pinned in .env, else the one that logged in first (as saved)."""
+    _ensure()
+    if OWNER_CHAT_ID is not None:
+        return OWNER_CHAT_ID
+    saved = _state.get("owner_chat_id")
+    return saved if isinstance(saved, int) else None
+
+
+def bind(chat_id: int) -> None:
+    """Remember who the owner is. A no-op once someone is bound."""
+    _ensure()
+    if owner() is None:
+        _state["owner_chat_id"] = chat_id
+        _write()
+
+
+def get(key: str, default: Any = None) -> Any:
+    _ensure()
     return _state.get(key, default)
 
 
 def put(key: str, value: Any) -> None:
-    """Set one top-level key and write the file. A failed write is logged, never raised: losing
-    what the bot remembers costs a login, raising here would cost the handler that called it."""
-    if not _loaded:
-        _load()
-    if not enabled():
-        return
+    """Set one top-level key (None deletes it) and write the file.
+
+    A failed write is logged, never raised: losing what the bot remembers costs a login or a
+    guess, raising here would cost the handler that called it.
+    """
+    _ensure()
     if value is None:
         _state.pop(key, None)
     else:
         _state[key] = value
-    _state["owner_chat_id"] = OWNER_CHAT_ID
+    _write()
+
+
+def pref(name: str, default: Any = None) -> Any:
+    prefs = get("prefs")
+    return prefs.get(name, default) if isinstance(prefs, dict) else default
+
+
+def set_pref(name: str, value: Any) -> None:
+    prefs = dict(get("prefs") or {})
+    if value is None:
+        prefs.pop(name, None)
+    else:
+        prefs[name] = value
+    put("prefs", prefs)
+
+
+def _write() -> None:
+    who = owner()
+    if not enabled() or who is None:
+        return
+    _state["owner_chat_id"] = who
     path = _path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

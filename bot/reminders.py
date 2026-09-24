@@ -1,9 +1,9 @@
-"""The evening message: the advisor, sent to the owner when something needs them.
+"""The optional evening message: Home, sent to the owner when something needs them.
 
-The owner asked for an advisor that messages them rather than an app they have to remember to
-open. So once a day, at `REMINDER_HOUR` local time, this loop reads `GET /advisor` as the owner
-and sends the home screen itself — the same text and the same buttons (`advisor.compose`) — when
-there is a reason to:
+OFF by default (`REMINDERS_ENABLED=false`): the owner uses the bot to record, pay and check
+wallets, and did not pick a daily message. When switched on, once a day at `REMINDER_HOUR` local
+time this loop reads `GET /advisor` as the owner and sends Home itself — the same text and the
+same buttons (`home.compose`) — when there is a reason to:
 
 * **something new is due** — a bill, a wallet check, a month to close, money to set aside. Each
   "do this" suggestion has an id, and one that was already sent is repeated only after
@@ -13,9 +13,8 @@ there is a reason to:
 
 Otherwise the evening is quiet. Ideas alone never trigger a message.
 
-*It needs the owner's login.* `bot/storage.py` keeps it across restarts, and this daily call is
-what keeps it alive: every refresh returns a new seven-day refresh token. If the backend rejects
-the login anyway, the owner is told once, so the silence that follows is not a mystery.
+*It needs the owner's login*, which `bot/storage.py` keeps across restarts and
+`bot/keepalive.py` keeps fresh. If the backend rejects it, the owner is told once.
 
 *It must not repeat itself.* What was sent when is kept with the login (`storage`), so a restart
 at 21:30 neither repeats the evening's message nor loses the repeat timers.
@@ -24,8 +23,7 @@ at 21:30 neither repeats the evening's message nor loses the repeat timers.
 contained; a failed check costs that day's message and nothing else. `CancelledError` is the one
 thing allowed through, because that is shutdown asking the loop to stop.
 
-*It is on by default* but needs someone to talk to: `OWNER_CHAT_ID`, or a chat that logged in.
-`REMINDERS_ENABLED=false` switches it off.
+It needs someone to talk to: `OWNER_CHAT_ID`, or the chat that logged in.
 """
 from __future__ import annotations
 
@@ -175,7 +173,7 @@ def due_notices(data: dict[str, Any], today: dt.date, sent: dict[str, str]) -> l
 
 
 async def _tick(bot: Bot, today: dt.date) -> None:
-    from .routers import advisor  # the router imports aiogram handlers; keep it off the import path
+    from .routers import home  # the router imports aiogram handlers; keep it off the import path
 
     chat_id = _owner_chat()
     if chat_id is None:
@@ -187,14 +185,14 @@ async def _tick(bot: Bot, today: dt.date) -> None:
         return
 
     try:
-        data = await advisor.fetch(chat_id)
+        data = await home.fetch(chat_id)
     except api.NeedsLogin:
         # The backend rejected the saved login (the refresh token ran out while the bot was
         # down for a week, or the JWT secret changed). Say so once: the next evenings are quiet
         # because the session is gone, and that should not look like the advisor gave up.
         log.info("Reminders: the login for chat %s was rejected — asking the owner to log in.", chat_id)
         with suppress(Exception):
-            await bot.send_message(chat_id, t(chat_id, "adv.remind.loggedOut"),
+            await bot.send_message(chat_id, t(chat_id, "auth.loggedOut"),
                                    reply_markup=keyboards.login_kb(chat_id))
         return
     except Exception:  # noqa: BLE001
@@ -208,8 +206,8 @@ async def _tick(bot: Bot, today: dt.date) -> None:
         log.info("Reminders: nothing new for chat %s today.", chat_id)
         return
 
-    header = t(chat_id, "adv.remind.weekly" if weekly else "adv.remind.evening")
-    text, kb = advisor.compose(chat_id, data, header=header)
+    header = t(chat_id, "home.remind.weekly") if weekly else t(chat_id, "home.remind.evening")
+    text, kb = home.compose(chat_id, data, header=header)
     try:
         await bot.send_message(chat_id, text, reply_markup=kb)
     except Exception:  # noqa: BLE001

@@ -69,7 +69,6 @@ if not API_BASE_URL.startswith(("http://", "https://")):
     raise _bad("API_BASE_URL", API_BASE_URL,
                "expected an absolute URL, e.g. http://backend:8080/api/v1")
 
-SESSION_TTL_HOURS = _number("SESSION_TTL_HOURS", "24", low=0.05, high=8760)
 REQUEST_TIMEOUT = _number("API_TIMEOUT", "10", low=1, high=300)
 # The bot is UZS-only (multi-currency/FX support was removed). The backend's Currency enum
 # accepts only "UZS", but request payloads still carry the field, so this constant is stamped
@@ -94,18 +93,19 @@ except ValueError:
     raise _bad("OWNER_CHAT_ID", _owner,
                "expected a numeric Telegram chat id (@userinfobot will tell you yours)") from None
 
-# --- Staying logged in (see bot/storage.py) ---
-# The owner's login, language and reminder history are kept in this file so a restart does not
-# log them out — but only when OWNER_CHAT_ID pins who the owner is. In Docker, put it on a
-# volume (DEPLOY.md). Set STAY_LOGGED_IN=false to go back to logins that live in memory only
-# and expire after SESSION_TTL_HOURS.
+# --- Staying logged in (see bot/storage.py and bot/keepalive.py) ---
+# A login lasts until /lock: the token pair is refreshed before it runs out, and the owner's is
+# kept in SESSION_FILE (with their language, last wallet and category guesses) so a restart or a
+# redeploy does not log them out. The owner is OWNER_CHAT_ID, or else the chat that logged in
+# first — that binding is saved in the same file. In Docker, put it on a volume (DEPLOY.md).
+# STAY_LOGGED_IN=false keeps everything in memory only: a restart then asks for a login again.
 STAY_LOGGED_IN = _bool("STAY_LOGGED_IN", True)
 SESSION_FILE = _raw("SESSION_FILE", "data/session.json")
 
-# --- The evening advisor message (bot/reminders.py) ---
-# On by default: the owner asked the advisor to message them. It still needs to know whose chat
-# to write to — OWNER_CHAT_ID, or the chat that logged in — and says nothing until then.
-REMINDERS_ENABLED = _bool("REMINDERS_ENABLED", True)
+# --- The scheduled evening message (bot/reminders.py) ---
+# OFF by default: the owner uses the bot to record, pay and check wallets, and did not ask for a
+# daily message. REMINDERS_ENABLED=true turns it back on; it writes to the owner's chat only.
+REMINDERS_ENABLED = _bool("REMINDERS_ENABLED", False)
 # Local hour (in TZ_OFFSET_HOURS terms, not UTC) reminders are delivered at.
 REMINDER_HOUR = _int("REMINDER_HOUR", "21", low=0, high=23)
 

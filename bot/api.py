@@ -37,6 +37,11 @@ _TOKEN_401 = "Authentication required"
 # visible in the token and does not have to be discovered by spending a request on a 401.
 _EXPIRY_LEEWAY = 30.0
 
+# The refresh token lives seven days (app.jwt.refresh-ttl-seconds) and every refresh returns a
+# new one. Rotating it once it has less than this left keeps a login alive for as long as the
+# bot runs — a request does it on the way past, and bot/keepalive.py does it for a quiet week.
+REFRESH_MARGIN = 5 * 24 * 3600.0
+
 # An error line is interpolated into a message that already has a header and a keyboard, so
 # a pathological validation map must not eat the 4096-char budget on its own.
 _MAX_MSG = 500
@@ -218,22 +223,6 @@ async def _auth_post(path: str, username: str, password: str) -> dict[str, Any]:
 
 
 # ── Authenticated endpoints ─────────────────────────────────────────────────
-async def reset(chat_id: int, password: str) -> None:
-    """Factory reset (Danger Zone): POST /settings/reset {password}.
-
-    `auth_retry=False` because the backend answers a WRONG PASSWORD with 401 "Incorrect
-    password." (ResetService.java:52 → GlobalExceptionHandler.java:29-32) — the same status
-    a dead access token gets. With the retry on, one mistyped character re-fired a
-    truncate-everything endpoint and then told the owner their session had expired, so the
-    natural next move was to retype their credentials into the chat. The 401 now reaches
-    menu.reset_password as an ApiError carrying the server's own sentence.
-
-    On success the account itself is gone, so callers must lock the session afterwards.
-    """
-    await request(chat_id, "POST", "/settings/reset", json={"password": password},
-                  auth_retry=False)
-
-
 async def request(chat_id: int, method: str, path: str, *,
                   params: dict[str, Any] | None = None,
                   json: dict[str, Any] | list[Any] | None = None,
@@ -243,10 +232,8 @@ async def request(chat_id: int, method: str, path: str, *,
     `auth_retry=False` marks an endpoint whose 401 is its own answer rather than a verdict on
     the token: don't refresh, don't re-send, hand the message back. The access token is still
     refreshed *before* the call when it has already expired, so switching the retry off costs
-    such an endpoint nothing — see `reset()`.
+    such an endpoint nothing — a caller that must never fire twice.
     """
-    # store.get() enforces the TTL and drops the row, so an expired chat can no longer write
-    # money from a flow it started yesterday while the menu tells it the session is over.
     s = store.get(chat_id)
     if s is None:
         raise NeedsLogin()
@@ -254,7 +241,7 @@ async def request(chat_id: int, method: str, path: str, *,
     c = await client()
     access = s.access
     exp = _expiry(access)
-    if exp is not None and exp - _EXPIRY_LEEWAY <= time.time():
+    if (exp is not None and exp - _EXPIRY_LEEWAY <= time.time()) or _refresh_due(s.refresh):
         access = await _refresh(chat_id, access)
 
     r = await c.request(method, path, params=params, json=json,
@@ -310,11 +297,15 @@ async def _refresh(chat_id: int, seen: str) -> str:
             # username+password re-login while their refresh token was good for another week.
             logger.warning("Token refresh could not reach the backend: %r", exc)
             raise Unreachable(exc) from exc
-        if r.status_code >= 400:
-            # The server ruled on it: spent, rotated away, revoked, or signed with an old key.
+        if r.status_code in (400, 401, 403):
+            # The server ruled on it: expired, unknown account, or signed with an old key.
             logger.info("Token refresh rejected (%s) — locking chat %s", r.status_code, chat_id)
             store.lock(chat_id)
             raise NeedsLogin()
+        if r.status_code >= 400:
+            # A 502 while the backend restarts says nothing about the token. Keep the login.
+            logger.warning("Token refresh answered %s — keeping the login", r.status_code)
+            raise Unreachable(RuntimeError(f"refresh answered {r.status_code}"))
         try:
             data = r.json()
             access, refresh = str(data["accessToken"]), str(data["refreshToken"])
@@ -324,3 +315,20 @@ async def _refresh(chat_id: int, seen: str) -> str:
         # Through the store, so the owner's saved login moves to the new pair as well.
         store.update_tokens(chat_id, access, refresh)
         return s.access
+
+
+def _refresh_due(refresh: str) -> bool:
+    exp = _expiry(refresh)
+    return exp is not None and exp - time.time() < REFRESH_MARGIN
+
+
+async def keep_fresh(chat_id: int) -> None:
+    """Rotate this chat's token pair if the refresh token is getting old.
+
+    Raises NeedsLogin when the backend rejects it, Unreachable when it cannot be asked.
+    """
+    s = store.get(chat_id)
+    if s is None:
+        raise NeedsLogin()
+    if _refresh_due(s.refresh):
+        await _refresh(chat_id, s.access)

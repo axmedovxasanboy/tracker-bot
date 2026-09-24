@@ -111,27 +111,25 @@ def parse_number(text: str | None) -> float | None:
     return _parse(text)
 
 
-def fmt_money(amount) -> str:
-    """"1 500 000 UZS". Space-grouped, no fractional part (UZS has no circulating coin)."""
+def fmt_num(amount) -> str:
+    """"1 500 000" — the figure alone, for "0 of 1 213 450 UZS" where the unit is said once."""
     if amount is None:
         return "—"
     try:
         n = float(amount)
     except (TypeError, ValueError):
-        # The API sent prose where a number belongs. Escape it: this string is about to be
-        # interpolated into an HTML message. Imported here because `keyboards` imports this
-        # module, and at module level the two would deadlock on each other.
         from .keyboards import esc
         return esc(amount)
-    return f"{n:,.0f}".replace(",", " ") + f" {CURRENCY}"
+    return f"{n:,.0f}".replace(",", " ")
 
 
-def fmt_pct(value) -> str:
-    """"12.5%" — trailing zeros trimmed, and never more than two decimals of noise."""
-    if value is None:
+def fmt_money(amount) -> str:
+    """"1 500 000 UZS". Space-grouped, no fractional part (UZS has no circulating coin)."""
+    if amount is None:
         return "—"
+    number = fmt_num(amount)
     try:
-        return f"{round(float(value), 2):g}%"
+        float(amount)
     except (TypeError, ValueError):
-        from .keyboards import esc
-        return esc(value)
+        return number  # prose where a number belongs, already escaped
+    return f"{number} {CURRENCY}"

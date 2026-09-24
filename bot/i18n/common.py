@@ -1,101 +1,100 @@
-"""Shared chrome: the words that appear on more than one screen.
+"""Shared words: buttons every screen uses, short dates, failures, the income guard, Settings.
 
 `common.*` `guard.*` `lang.*` `settings.*`
 
-This module is FROZEN. Every other area module may read these keys but none may redefine
-them — the merge in `__init__` raises on a duplicate, so a second definition anywhere is a
-hard import error, not a silently-shadowed button label. If a word here reads wrong on one
-screen, the fix is a key in that screen's own module, not an edit here.
+Uzbek is Latin script with ʻ (Oʻzbek), and follows the web app's wording.
 """
 
 EN: dict[str, str] = {
-    # Language / settings
-    "lang.title": "🌐 <b>Language</b>",
-    "lang.pick": "Pick the language for this chat:",
-    "lang.changed": "Language set to English.",
-    "settings.language": "🌐 Language",
-    "settings.backToSettings": "⬅️ Settings",
-    # Buttons — every screen's navigation row is built out of these four
+    # Buttons
     "common.cancel": "✖️ Cancel",
     "common.back": "⬅️ Back",
-    "common.menu": "🏠 Home",
-    "common.confirm": "✅ Confirm",
+    "common.home": "🏠 Home",
     "common.skip": "⏭ Skip",
-    "common.add": "➕ Add",
-    "common.edit": "✏️ Edit",
-    "common.delete": "🗑 Delete",
-    "common.deleteYes": "✅ Yes, delete",
-    "common.yes": "✅ Yes",
-    "common.no": "✖️ No",
-    "common.today": "📅 Today",
     "common.retry": "🔄 Retry",
-    # Transient status. `saving` replaces the screen (keyboard removed) for the whole
-    # duration of a write, so it is the double-submit guard as much as it is feedback.
+    "common.cashBtn": "💵 Cash",
+    "common.cash": "Cash",
+    # Status
     "common.saving": "⏳ Saving…",
-    "common.loading": "⏳ Loading…",
-    "common.done": "✅ Done",
     "common.cancelled": "Cancelled.",
-    "common.none": "—",
-    "common.nothingHere": "Nothing here yet.",
     # Failures
-    "common.sessionExpired": "🔒 Session expired. Please log in.",
-    "common.serverUnreachable": "❌ Couldn't reach the server.",
-    "common.somethingWentWrong": "❌ Something went wrong. Please try again.",
+    "common.sessionExpired": "🔒 You're logged out. Please log in.",
+    "common.serverUnreachable": "❌ Couldn't reach the server. Try again in a minute.",
     "common.notForYou": "🚫 This bot is private.",
-    "common.unknownSection": "Unknown section.",
-    # Input validation
+    "common.oldButton": "That button is from an older screen.",
     "common.positiveNumber": "Send a positive number.",
     "common.sendNumberExample": "Send a number (e.g. 0 or 250000).",
-    # Money words used as data labels, not as sentences
-    "common.cash": "Cash",
-    "common.cashBtn": "💵 Cash",
-    "common.typeIncome": "Income",
-    "common.typeExpense": "Expense",
-    "common.typeBoth": "Both",
-    # Income guard — the backend refuses every money write until stable income is set
+    # Short dates
+    "common.today": "Today",
+    "common.tomorrow": "Tomorrow",
+    "common.yesterday": "Yesterday",
+    "common.mon.1": "Jan", "common.mon.2": "Feb", "common.mon.3": "Mar", "common.mon.4": "Apr",
+    "common.mon.5": "May", "common.mon.6": "Jun", "common.mon.7": "Jul", "common.mon.8": "Aug",
+    "common.mon.9": "Sep", "common.mon.10": "Oct", "common.mon.11": "Nov", "common.mon.12": "Dec",
+    "common.wd.0": "Mon", "common.wd.1": "Tue", "common.wd.2": "Wed", "common.wd.3": "Thu",
+    "common.wd.4": "Fri", "common.wd.5": "Sat", "common.wd.6": "Sun",
+
+    # The backend refuses every money write until the monthly income is set.
     "guard.incomeTitle": "⚠️ <b>Set your monthly income first</b>",
-    "guard.incomeBody": "Nothing can be recorded until it is set — your tier and every allocation "
-                        "figure are calculated from it. Set it in Settings to continue.",
+    "guard.incomeBody": "Nothing can be recorded until it is set — it is what the daily figure "
+                        "and your savings are worked out from.",
+
+    "lang.changed": "Language set to English.",
+
+    # Settings
+    "settings.title": "⚙️ <b>Settings</b>",
+    "settings.income": "Monthly income: <b>{amount}</b>",
+    "settings.notSet": "not set",
+    "settings.hint": "Categories, loans, bills and goals are in the web app.",
+    "settings.langBtn": "🌐 Oʻzbekcha",
+    "settings.incomeBtn": "💰 Monthly income",
+    "settings.helpBtn": "❓ Help",
+    "settings.lockBtn": "🔒 Log out",
+    "settings.incomeTitle": "💰 <b>Monthly income</b>",
+    "settings.incomeAsk": "Send your monthly stable income, e.g. <code>8000000</code> or <code>8m</code>.",
+    "settings.incomeSaved": "✅ Monthly income saved: {amount}",
 }
 
 UZ: dict[str, str] = {
-    "lang.title": "🌐 <b>Til</b>",
-    "lang.pick": "Ushbu chat uchun tilni tanlang:",
-    "lang.changed": "Til oʻzbekchaga oʻzgartirildi.",
-    "settings.language": "🌐 Til",
-    "settings.backToSettings": "⬅️ Sozlamalar",
     "common.cancel": "✖️ Bekor qilish",
     "common.back": "⬅️ Orqaga",
-    "common.menu": "🏠 Bosh sahifa",
-    "common.confirm": "✅ Tasdiqlash",
+    "common.home": "🏠 Bosh sahifa",
     "common.skip": "⏭ Oʻtkazib yuborish",
-    "common.add": "➕ Qoʻshish",
-    "common.edit": "✏️ Tahrirlash",
-    "common.delete": "🗑 Oʻchirish",
-    "common.deleteYes": "✅ Ha, oʻchirilsin",
-    "common.yes": "✅ Ha",
-    "common.no": "✖️ Yoʻq",
-    "common.today": "📅 Bugun",
     "common.retry": "🔄 Qayta urinish",
+    "common.cashBtn": "💵 Naqd",
+    "common.cash": "Naqd",
     "common.saving": "⏳ Saqlanmoqda…",
-    "common.loading": "⏳ Yuklanmoqda…",
-    "common.done": "✅ Tayyor",
     "common.cancelled": "Bekor qilindi.",
-    "common.none": "—",
-    "common.nothingHere": "Hozircha hech narsa yoʻq.",
-    "common.sessionExpired": "🔒 Sessiya tugadi. Iltimos, qaytadan kiring.",
-    "common.serverUnreachable": "❌ Serverga ulanib boʻlmadi.",
-    "common.somethingWentWrong": "❌ Nimadir xato ketdi. Qayta urinib koʻring.",
+    "common.sessionExpired": "🔒 Tizimdan chiqdingiz. Iltimos, qaytadan kiring.",
+    "common.serverUnreachable": "❌ Serverga ulanib boʻlmadi. Bir daqiqadan keyin qayta urinib koʻring.",
     "common.notForYou": "🚫 Bu bot shaxsiy.",
-    "common.unknownSection": "Nomaʼlum boʻlim.",
+    "common.oldButton": "Bu tugma eski ekrandan.",
     "common.positiveNumber": "Musbat son yuboring.",
     "common.sendNumberExample": "Son yuboring (masalan, 0 yoki 250000).",
-    "common.cash": "Naqd",
-    "common.cashBtn": "💵 Naqd",
-    "common.typeIncome": "Daromad",
-    "common.typeExpense": "Xarajat",
-    "common.typeBoth": "Ikkalasi",
+    "common.today": "Bugun",
+    "common.tomorrow": "Ertaga",
+    "common.yesterday": "Kecha",
+    "common.mon.1": "yan", "common.mon.2": "fev", "common.mon.3": "mar", "common.mon.4": "apr",
+    "common.mon.5": "may", "common.mon.6": "iyun", "common.mon.7": "iyul", "common.mon.8": "avg",
+    "common.mon.9": "sen", "common.mon.10": "okt", "common.mon.11": "noy", "common.mon.12": "dek",
+    "common.wd.0": "Dush", "common.wd.1": "Sesh", "common.wd.2": "Chor", "common.wd.3": "Pay",
+    "common.wd.4": "Jum", "common.wd.5": "Shan", "common.wd.6": "Yak",
+
     "guard.incomeTitle": "⚠️ <b>Avval oylik daromadingizni kiriting</b>",
-    "guard.incomeBody": "U kiritilmaguncha hech narsa yozib qoʻyilmaydi — darajangiz va barcha "
-                        "taqsimot hisob-kitoblari shundan olinadi. Davom etish uchun Sozlamalardan kiriting.",
+    "guard.incomeBody": "U kiritilmaguncha hech narsa yozib boʻlmaydi — kunlik summa va "
+                        "jamgʻarmalaringiz shundan hisoblanadi.",
+
+    "lang.changed": "Til oʻzbekchaga oʻzgartirildi.",
+
+    "settings.title": "⚙️ <b>Sozlamalar</b>",
+    "settings.income": "Oylik daromad: <b>{amount}</b>",
+    "settings.notSet": "kiritilmagan",
+    "settings.hint": "Kategoriyalar, qarzlar, toʻlovlar va maqsadlar veb-ilovada.",
+    "settings.langBtn": "🌐 English",
+    "settings.incomeBtn": "💰 Oylik daromad",
+    "settings.helpBtn": "❓ Yordam",
+    "settings.lockBtn": "🔒 Chiqish",
+    "settings.incomeTitle": "💰 <b>Oylik daromad</b>",
+    "settings.incomeAsk": "Oylik barqaror daromadingizni yuboring, masalan <code>8000000</code> yoki <code>8m</code>.",
+    "settings.incomeSaved": "✅ Oylik daromad saqlandi: {amount}",
 }

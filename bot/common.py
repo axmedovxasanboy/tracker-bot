@@ -13,8 +13,8 @@ line scrolls past, and the owner is left holding a phone with a spinning button 
 * A write with a live Confirm button under it can be submitted twice by an impatient thumb.
   `begin_write()` takes the button away before the request leaves the process.
 
-Routers should reach for `show`, `ack`, `begin_write`, `gate` and `stable_income_set` and never
-touch `cb.message.edit_text` directly — that is the call that has no idea what it is holding.
+Routers should reach for `show`, `ack`, `begin_write` and `gate` and never touch
+`cb.message.edit_text` directly — that is the call that has no idea what it is holding.
 """
 import logging
 
@@ -27,8 +27,8 @@ from .session import store
 
 log = logging.getLogger(__name__)
 
-# Telegram's hard ceiling for message text. Anything longer is rejected outright, so long
-# screens (a month history, a full allocation ledger) are split rather than truncated.
+# Telegram's hard ceiling for message text. Anything longer is rejected outright, so a long
+# screen is split rather than truncated.
 TEXT_LIMIT = 4096
 
 # The one TelegramBadRequest that means "your render was a no-op" rather than "your render
@@ -187,27 +187,6 @@ async def show(event: TelegramObject, text: str, kb: InlineKeyboardMarkup | None
         await _send(event, part, kb if i == last else None)
 
 
-async def edit(event: TelegramObject, text: str,
-               kb: InlineKeyboardMarkup | None = None) -> None:
-    """Update the screen in place, never posting a new message.
-
-    Use this where a second message would be wrong — replacing a confirmation with its result,
-    for instance. A Message event has nothing of ours to edit (the bot cannot edit the user's
-    own message), so this does nothing there; reach for `show` whenever the event might be a
-    typed one. Long text is still split, but only the first chunk can be an edit.
-    """
-    if not isinstance(event, CallbackQuery):
-        log.debug("edit() on a %s: nothing of ours to edit", type(event).__name__)
-        return
-    chunks = _split(text)
-    last = len(chunks) - 1
-    if not await _edit_message(event, chunks[0], kb if last == 0 else None):
-        log.debug("edit() could not reach the message for callback %s", event.id)
-        return
-    for i, part in enumerate(chunks[1:], start=1):
-        await _send(event, part, kb if i == last else None)
-
-
 async def begin_write(event: TelegramObject, chat_id: int | None = None) -> None:
     """Show "Saving…" and take the keyboard away, BEFORE the write leaves the process.
 
@@ -238,39 +217,4 @@ async def gate(event: TelegramObject) -> bool:
     # get here and the duplicate used to abort this handler before it could render anything.
     await ack(event)
     await show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
-    return False
-
-
-async def stable_income_set(event: TelegramObject) -> bool:
-    """False (and shows the guard) when Settings has no monthly stable income.
-
-    The backend refuses every money-writing call until it is set, so each write flow checks up
-    front rather than walking the owner through a whole form only to reject it at the end.
-    On any lookup failure this returns True and lets the backend be the authority.
-
-    The guard screen carries the fix, not directions to another application: a fresh phone-only
-    owner who signs up in the bot hits this wall on their very first tap, and "open the web app"
-    is not an answer they can act on from where they are standing.
-    """
-    from . import api
-    chat_id = chat_id_of(event)
-    try:
-        settings = await api.request(chat_id, "GET", "/settings") or {}
-    except api.NeedsLogin:
-        await ack(event)
-        await show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
-        return False
-    except Exception:  # noqa: BLE001
-        return True
-    income = settings.get("monthlyStableIncome")
-    try:
-        if income is not None and float(income) > 0:
-            return True
-    except (TypeError, ValueError):
-        pass  # the field is there but is not a number — treat it as unset
-    await ack(event)
-    await show(
-        event,
-        f"{t(chat_id, 'guard.incomeTitle')}\n\n{t(chat_id, 'guard.incomeBody')}",
-        keyboards.income_guard_kb(chat_id))
     return False

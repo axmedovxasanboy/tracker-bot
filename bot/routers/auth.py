@@ -1,5 +1,7 @@
 """The front door: /start, the typed login/signup, /lock, /menu and the global /cancel.
 
+A login lasts until /lock — see `bot/session.py` and `bot/keepalive.py`.
+
 Four things happen here that are not obvious from the handlers themselves.
 
 **The owner is bound.** `SessionStore.start()` claims the process for the first chat that
@@ -7,19 +9,18 @@ authenticates, and `bot/middlewares.py` refuses every other chat from that momen
 module is the only place a successful authentication lands, so it is also where the binding is
 *checked*: the guard reads `owner_id()` at the top of an update, and two chats can therefore
 both be inside `got_password` while the door is still open. The loser of that race gets its
-session dropped again rather than left in memory for the 24h TTL.
+session dropped again rather than left in memory.
 
 **A command must never become a credential.** Handlers inside one router are tried in
 registration order and the first match wins, so a bare `StateFilter(Auth.username)` text
 handler swallows anything typed at it — `/lock` included, which is the escape hatch the login
 success message itself advertises. Every command handler in this router is registered above
 the two state handlers, and the state handlers additionally refuse command-shaped text, so a
-command that belongs to a *later* router (`/add` in `quickadd`) still reaches it.
+command that belongs to another router (`/add`, `/help`, `/settings`) still reaches it.
 
-**A factory reset takes the bot's own configuration with it.** `ResetService.TRUNCATE_ALL`
-includes `settings`, which is where `telegram_webhook_url` lives — the value `main.py` reads
-at boot. After a reset the next restart raises SystemExit and the container crash-loops, and
-the only way back is the web app. So the signup that follows a reset writes both URLs back.
+**A factory reset (web app) takes the bot's own configuration with it.** `ResetService`
+truncates `settings`, which is where `telegram_webhook_url` lives — the value `main.py` reads
+at boot. So the signup that follows a reset writes both URLs back.
 
 **The password is deleted from the chat, and that can fail.** Deleting an incoming message
 needs the right and a message younger than 48h; when it does not work the password is sitting
@@ -38,6 +39,7 @@ from ..i18n import t
 from ..keyboards import esc
 from ..session import store
 from ..states import Auth
+from . import home
 
 log = logging.getLogger(__name__)
 
@@ -49,11 +51,11 @@ router = Router()
 _COMMAND = re.compile(r"^/([A-Za-z0-9_]{1,32})(?:@[A-Za-z0-9_]+)?(?:\s|$)")
 
 # Commands this router deliberately lets fall through to the router that owns them. `/help`
-# lives in main.py's `system` router, which is included FIRST and therefore already outranks
-# everything here; `/add` lives in `quickadd`, which is included LAST. Anything else that is
+# and `/add` live in main.py's `system` router, which is included FIRST and therefore already
+# outranks everything here; `/settings` lives in the settings router. Anything else that is
 # command-shaped is unknown to the bot, and dropping it silently mid-login would be worse than
 # the swallowing this whole arrangement exists to fix — `command_during_login` answers it.
-_DOWNSTREAM_COMMANDS = frozenset({"add", "help"})
+_DOWNSTREAM_COMMANDS = frozenset({"add", "help", "settings"})
 
 # The backend answers authentication failures with English prose and no machine-readable code,
 # so these four sentences are matched verbatim (AuthService.java:38-55, and the "already
@@ -69,8 +71,13 @@ _BACKEND_ERRORS = {
 
 
 # ── Small helpers ───────────────────────────────────────────────────────────
-def _menu_or_login(chat_id: int) -> InlineKeyboardMarkup:
-    return keyboards.main_menu_kb(chat_id) if store.is_active(chat_id) else keyboards.login_kb(chat_id)
+async def _home_or_login(event: TelegramObject, notice: str | None = None) -> None:
+    """Home when logged in; otherwise the notice (or the welcome) with the log-in button."""
+    chat_id = common.chat_id_of(event)
+    if store.is_active(chat_id):
+        await home.show_home(event, notice)
+        return
+    await common.show(event, notice or t(chat_id, "auth.pleaseLoginFirst"), keyboards.login_kb(chat_id))
 
 
 def _command_name(text: str | None) -> str | None:
@@ -229,9 +236,7 @@ async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
     chat_id = message.chat.id
     if store.is_active(chat_id):
-        # Home is the advisor: what you have, what is coming, what to do next.
-        from .advisor import show_advisor
-        await show_advisor(message)
+        await home.show_home(message)
         return
     if await _needs_signup():
         # First run — the account does not exist yet, so this screen is not an invitation to
@@ -245,16 +250,13 @@ async def start(message: Message, state: FSMContext) -> None:
 @router.message(Command("menu"))
 async def menu_cmd(message: Message, state: FSMContext) -> None:
     await state.clear()
-    chat_id = message.chat.id
-    text = keyboards.menu_text(chat_id) if store.is_active(chat_id) else t(chat_id, "auth.pleaseLoginFirst")
-    await common.show(message, text, _menu_or_login(chat_id))
+    await _home_or_login(message)
 
 
 @router.message(Command("cancel"))
 async def cancel_cmd(message: Message, state: FSMContext) -> None:
     await state.clear()
-    chat_id = message.chat.id
-    await common.show(message, t(chat_id, "common.cancelled"), _menu_or_login(chat_id))
+    await _home_or_login(message, t(message.chat.id, "common.cancelled"))
 
 
 @router.message(Command("lock"))
@@ -332,7 +334,7 @@ async def got_password(message: Message, state: FSMContext) -> None:
     # not necessarily this chat. Only one arrangement produces a difference: nobody was bound
     # when the guard let this update in, and another chat finished authenticating while we
     # were awaiting the backend. That chat owns the bot now, so drop the session this one just
-    # got rather than leaving a live token pair in memory for its 24h TTL.
+    # got rather than leaving a live token pair in memory.
     owner = store.bind_owner(chat_id)
     if owner != chat_id:
         store.lock(chat_id)
@@ -360,9 +362,8 @@ async def got_password(message: Message, state: FSMContext) -> None:
              verb=t(chat_id, "auth.accountCreated" if created else "auth.loggedIn"),
              username=esc(username))
     if kb is None:
-        # An ordinary login lands on the advisor, with the greeting above it.
-        from .advisor import show_advisor
-        await show_advisor(message, _joined(body, warnings))
+        # An ordinary login lands on Home, with the greeting above it.
+        await home.show_home(message, _joined(body, warnings))
         return
     await common.show(message, _joined(body, warnings), kb)
 
@@ -373,7 +374,7 @@ async def command_during_login(message: Message, state: FSMContext) -> None:
 
     Registered after the two state handlers, which it can never collide with (they refuse
     command-shaped text and this one requires it). Without it an unknown command would fall
-    past every router — `quickadd`'s catch-all is `StateFilter(None)` — and vanish, which is a
+    past every router — `record`'s catch-all is `StateFilter(None)` — and vanish, which is a
     worse failure than the swallowing this filter arrangement exists to fix.
     """
     chat_id = message.chat.id
@@ -401,8 +402,7 @@ async def back_cb(cb: CallbackQuery, state: FSMContext) -> None:
 async def cancel_cb(cb: CallbackQuery, state: FSMContext) -> None:
     await common.ack(cb)
     await state.clear()
-    chat_id = common.chat_id_of(cb)
-    await common.show(cb, t(chat_id, "common.cancelled"), _menu_or_login(chat_id))
+    await _home_or_login(cb, t(common.chat_id_of(cb), "common.cancelled"))
 
 
 @router.callback_query(F.data == "lock")
