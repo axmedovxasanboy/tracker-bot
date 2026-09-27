@@ -1,15 +1,20 @@
 """👛 Wallets — the web's Wallets page: every balance and "You have", a wallet's transactions,
-Add card, Add money to a card, Update cash, Move money, and Check wallets.
+Add card, Edit / Delete a card, Add money to a card, Cash you hold now, Move money, and Check wallets.
 
 * **A wallet** (`wal:c:{card}:{page}`, `wal:k:{page}` for cash): its balance and its recent
   transactions, 10 a page — the card's (or the cash) portion of a split payment, as the web shows.
   A number opens the transaction (🧾 History's screens), whose Back comes here.
 * **Add card** — nickname → last 4 digits → network → starting balance → Create (`POST /cards`;
   the bank name mirrors the nickname, as the web now does).
+* **Edit card** — what the web's form edits: network, nickname, last 4 digits, starting balance and
+  colour (`PUT /cards/{id}`, the stored bank name kept), on `pay`'s form card. **Delete card** asks
+  first; a refusal (a card that still has transactions) is shown as the server words it.
 * **Add money** to a card / **Move money** — from → to → amount → Transfer
   (`POST /transactions/transfer`; cash is a null card id). The backend refuses a transfer until the
   monthly income is set, so that is asked first.
-* **Update cash** — the cash pot's figure (`POST /cash-balances`, the web's inline editor).
+* **Cash you hold now** — the app's figure, the amount typed, and what the gap will be recorded as
+  (everyday spending, or found money) before Save (`POST /cash-balances/current`; the server books
+  the difference). With no cash pot yet, **Add cash** sets its starting amount (`POST /cash-balances`).
 * **Check wallets** is the wallet check-in (`GET/POST /months/checkin`): type what is really in each
   wallet now; any gap from the app's figure is saved as everyday spending. One typed balance per
   wallet, then a review where any wallet can be corrected, then Save. A refusal keeps every
@@ -28,6 +33,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
+from aiogram.types import TelegramObject
+
 from .. import api, clock, common, keyboards, ui
 from ..config import CURRENCY
 from ..i18n import t
@@ -35,6 +42,7 @@ from ..keyboards import esc, ikb
 from ..money import fmt_money, parse_amount, parse_number
 from ..states import CheckIn
 from . import history, home, pay
+from .pay import Field, Spec
 
 router = Router(name="wallets")
 
@@ -43,10 +51,16 @@ _NAME_LIMIT = 60
 NETWORKS = ("UZCARD", "HUMO", "VISA")
 NETWORK_LABEL = {"UZCARD": "Uzcard", "HUMO": "Humo", "VISA": "VISA", "CASH": "Cash"}
 CARD_COLOR = "#0f172a"  # the web form's first swatch
+# The web form's swatches, each with the i18n key of its button (an emoji and a name).
+CARD_COLORS = (("#0f172a", "wallet.color.1"), ("#1e40af", "wallet.color.2"), ("#6366f1", "wallet.color.3"),
+               ("#7c3aed", "wallet.color.4"), ("#0891b2", "wallet.color.5"), ("#0d9488", "wallet.color.6"),
+               ("#059669", "wallet.color.7"), ("#d97706", "wallet.color.8"), ("#dc2626", "wallet.color.9"),
+               ("#be185d", "wallet.color.10"))
+NETWORK_KEYS = (("UZCARD", "wallet.net.UZCARD"), ("HUMO", "wallet.net.HUMO"), ("VISA", "wallet.net.VISA"))
 
 
 class WalletFlow(StatesGroup):
-    """Add card, Move money / Add money, Update cash. `pick` is every button-only step."""
+    """Add card, Move money / Add money, Cash you hold now. `pick` is every button-only step."""
     card_name = State()
     card_last4 = State()
     card_balance = State()
@@ -401,6 +415,7 @@ async def show_card(event, card_id: int, page: int = 0, notice: str | None = Non
         *buttons,
         _pager(chat_id, res, page, f"wal:c:{card_id}:"),
         [(t(chat_id, "wallet.topUpBtn"), f"wal:top:{card_id}")],
+        [(t(chat_id, "wallet.editCardBtn"), f"wal:ce:{card_id}"), (t(chat_id, "wallet.deleteCardBtn"), f"wal:cd:{card_id}")],
         ui.nav(chat_id, back="wal", home=True),
     ]))
 
@@ -468,9 +483,10 @@ async def on_cash(cb: CallbackQuery, state: FSMContext) -> None:
     await show_cash(cb, _page_of(cb.data.split(":")[2]))
 
 
-# ── Update cash ─────────────────────────────────────────────────────────────
+# ── Cash you hold now ───────────────────────────────────────────────────────
 @router.callback_query(F.data == "wal:kx")
 async def on_cash_edit(cb: CallbackQuery, state: FSMContext) -> None:
+    """With a pot: "Cash you hold now" (the app's figure, then the amount). Without: Add cash."""
     await common.ack(cb)
     if not await common.gate(cb):
         return
@@ -480,14 +496,26 @@ async def on_cash_edit(cb: CallbackQuery, state: FSMContext) -> None:
     except Exception as exc:  # noqa: BLE001
         await home.report(cb, exc)
         return
-    lines = [t(chat_id, "wallet.cashModalTitle"), "", t(chat_id, "wallet.cashHoldLabel", currency=CURRENCY),
-             t(chat_id, "wallet.cashHoldHint")]
-    if pot is not None:
-        lines += ["", t(chat_id, "wallet.cashNow", current=fmt_money(home.n(pot.get("currentBalance"))),
-                        initial=fmt_money(home.n(pot.get("initialBalance"))))]
-    lines += ["", t(chat_id, "wallet.cashAsk")]
     await state.set_state(WalletFlow.cash_amount)
+    if pot is None:
+        await state.update_data(wk={"app": None})
+        lines = [t(chat_id, "wallet.cashModalTitle"), "", t(chat_id, "wallet.cashHoldLabel", currency=CURRENCY),
+                 t(chat_id, "wallet.cashHoldHint"), "", t(chat_id, "wallet.cashAsk")]
+    else:
+        app = home.n(pot.get("currentBalance"))
+        await state.update_data(wk={"app": app})
+        lines = [t(chat_id, "wallet.cashNowTitle"), "", t(chat_id, "wallet.cashAppThinks", amount=fmt_money(app)),
+                 "", t(chat_id, "wallet.cashNowAsk", currency=CURRENCY)]
     await common.show(cb, "\n".join(lines), ikb([ui.nav(chat_id, back="wal:k:0", home=True)]))
+
+
+def _cash_gap(chat_id: int, app: float, held: float) -> str:
+    gap = round(app - held, 2)
+    if gap > 0:
+        return t(chat_id, "wallet.cashWillSpend", amount=fmt_money(gap))
+    if gap < 0:
+        return t(chat_id, "wallet.cashWillFind", amount=fmt_money(-gap))
+    return t(chat_id, "wallet.cashMatches")
 
 
 @router.message(StateFilter(WalletFlow.cash_amount))
@@ -503,6 +531,18 @@ async def on_cash_typed(message: Message, state: FSMContext) -> None:
     if not await common.gate(message):
         await state.clear()
         return
+    wk = (await state.get_data()).get("wk") or {}
+    if wk.get("app") is not None:
+        # Nothing is written yet: the preview says what the gap becomes, Save sends it. A number
+        # typed again here replaces this one.
+        await state.update_data(wk=dict(wk, held=value))
+        await common.show(message, "\n".join([
+            t(chat_id, "wallet.cashNowTitle"), "",
+            t(chat_id, "wallet.cashAppThinks", amount=fmt_money(wk["app"])),
+            t(chat_id, "wallet.cashYouHold", amount=fmt_money(value)), "",
+            _cash_gap(chat_id, wk["app"], value)]),
+            ikb([[(t(chat_id, "wallet.saveBtn"), "wal:kok")], ui.nav(chat_id, back="wal:kx", cancel="wal:k:0")]))
+        return
     try:
         await api.request(chat_id, "POST", "/cash-balances", json={"currency": CURRENCY, "initialBalance": value})
     except api.NeedsLogin:
@@ -516,6 +556,186 @@ async def on_cash_typed(message: Message, state: FSMContext) -> None:
         return
     await state.clear()
     await show_cash(message, 0, t(chat_id, "wallet.cashSaved"))
+
+
+@router.callback_query(F.data == "wal:kok")
+async def on_cash_save(cb: CallbackQuery, state: FSMContext) -> None:
+    """Set the cash held now; the server books the gap from its own figure."""
+    if not await common.gate(cb):
+        return
+    chat_id = common.chat_id_of(cb)
+    wk = (await state.get_data()).get("wk") or {}
+    if wk.get("held") is None or wk.get("app") is None:
+        await common.ack(cb, t(chat_id, "common.oldButton"), alert=True)
+        await state.clear()
+        await show_cash(cb)
+        return
+    await common.ack(cb)
+    held, app = float(wk["held"]), float(wk["app"])
+    await common.begin_write(cb, chat_id)
+    try:
+        await api.request(chat_id, "POST", "/cash-balances/current",
+                          json={"currency": CURRENCY, "amount": held, "date": clock.today_iso()})
+    except api.NeedsLogin:
+        await state.clear()
+        await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return
+    except api.ApiError as exc:
+        await common.show(cb, t(chat_id, "common.serverUnreachable") if isinstance(exc, api.Unreachable)
+                          else f"❌ {esc(exc.message)}",
+                          ikb([[(t(chat_id, "common.retry"), "wal:kok")], ui.nav(chat_id, back="wal:kx", cancel="wal:k:0")]))
+        return
+    await state.clear()
+    gap = round(app - held, 2)
+    notice = (t(chat_id, "wallet.cashSavedSpent", amount=fmt_money(gap)) if gap > 0
+              else t(chat_id, "wallet.cashSavedFound", amount=fmt_money(-gap)) if gap < 0
+              else t(chat_id, "wallet.cashSavedMatch"))
+    await show_cash(cb, 0, notice)
+
+
+# ── Edit / delete a card ────────────────────────────────────────────────────
+async def _card(event, card_id: int) -> dict | None:
+    """`GET /cards/{id}`; None after saying it is gone (or why it could not be read)."""
+    chat_id = common.chat_id_of(event)
+    try:
+        card = await api.request(chat_id, "GET", f"/cards/{card_id}")
+    except api.ApiError as exc:
+        if exc.status == 404:
+            await common.show(event, t(chat_id, "wallet.cardGone"), ikb([ui.nav(chat_id, back="wal", home=True)]))
+            return None
+        await home.report(event, exc)
+        return None
+    except Exception as exc:  # noqa: BLE001
+        await home.report(event, exc)
+        return None
+    return card if isinstance(card, dict) else None
+
+
+@router.callback_query(F.data.startswith("wal:ce:"))
+async def on_card_edit(cb: CallbackQuery, state: FSMContext) -> None:
+    """`wal:ce:{card}` — the web's edit form, opened on its card with every answer filled in."""
+    await common.ack(cb)
+    if not await common.gate(cb):
+        return
+    raw = cb.data.split(":")[2]
+    card = await _card(cb, int(raw)) if raw.isdigit() else None
+    if card is None:
+        if not raw.isdigit():
+            await show_wallets(cb)
+        return
+    color = card.get("color") if any(card.get("color") == c for c, _ in CARD_COLORS) else None
+    vals = {"type": card.get("type") if card.get("type") in NETWORKS else None, "name": card.get("name") or "",
+            "last4": card.get("lastFourDigits") or "", "initial": home.n(card.get("initialBalance")), "color": color}
+    await pay.open_form(cb, state, "wal.card", vals=vals, ctx={"card": card}, ret=f"wal:c:{card['id']}:0", card=True)
+
+
+def _edit_title(chat_id: int, form: dict) -> str:
+    return t(chat_id, "wallet.editCardTitle", name=esc(form["ctx"]["card"].get("name") or "—"))
+
+
+def _edit_fields(form: dict) -> list[Field]:
+    return [Field("type", "wallet.f.network", "choice", options=NETWORK_KEYS),
+            Field("name", "wallet.f.name", "text"),
+            Field("last4", "wallet.f.last4", "text"),
+            Field("initial", "wallet.f.initial", "value", hint="wallet.f.initialHint"),
+            # Optional: a colour the web no longer offers is kept rather than asked again.
+            Field("color", "wallet.f.color", "choice", options=CARD_COLORS, per_row=2, optional=True,
+                  skip_label="wallet.f.keepColor")]
+
+
+def _edit_lines(chat_id: int, form: dict) -> list[str]:
+    """The balance now, and what it becomes: the starting balance moves it by the same amount."""
+    card, initial = form["ctx"]["card"], form["vals"].get("initial")
+    now = home.n(card.get("currentBalance"))
+    lines = [t(chat_id, "wallet.balance", amount=fmt_money(now))]
+    if initial is not None and round(home.n(initial) - home.n(card.get("initialBalance")), 2) != 0:
+        after = now - home.n(card.get("initialBalance")) + home.n(initial)
+        lines.append(t(chat_id, "wallet.balanceAfter", amount=fmt_money(after)))
+    return lines
+
+
+def _edit_check(chat_id: int, form: dict) -> str | None:
+    v = form["vals"]
+    if not re.fullmatch(r"\d{4}", str(v.get("last4") or "").strip()):
+        return t(chat_id, "wallet.badLast4")
+    if len(str(v.get("name") or "").strip()) > _NAME_LIMIT:
+        return t(chat_id, "wallet.nameTooLong", limit=_NAME_LIMIT)
+    return None
+
+
+async def _edit_save(event: TelegramObject, chat_id: int, form: dict) -> tuple[str, str | None]:
+    card, v = form["ctx"]["card"], form["vals"]
+    name = " ".join(str(v["name"]).split())
+    # The web's request: every field it edits, the stored bank name kept (it mirrors the nickname
+    # only when there is none), UZS — cards are UZS-only.
+    await api.request(chat_id, "PUT", f"/cards/{card['id']}", json={
+        "name": name, "bankName": (card.get("bankName") or name).strip(), "type": v["type"],
+        "lastFourDigits": str(v["last4"]).strip(), "initialBalance": home.n(v["initial"]),
+        "currency": CURRENCY, "color": v.get("color") or card.get("color") or CARD_COLOR})
+    return t(chat_id, "wallet.cardUpdated"), f"wal:c:{card['id']}:0"
+
+
+pay.FORMS["wal.card"] = Spec(title=_edit_title, fields=_edit_fields, save=_edit_save, lines=_edit_lines,
+                             check=_edit_check)
+
+
+@router.callback_query(F.data.startswith("wal:cd:"))
+async def on_card_delete(cb: CallbackQuery, state: FSMContext) -> None:
+    """`wal:cd:{card}` — asks first."""
+    await common.ack(cb)
+    if not await common.gate(cb):
+        return
+    await state.set_state(None)
+    chat_id = common.chat_id_of(cb)
+    raw = cb.data.split(":")[2]
+    card = await _card(cb, int(raw)) if raw.isdigit() else None
+    if card is None:
+        if not raw.isdigit():
+            await show_wallets(cb)
+        return
+    await pay.confirm(cb, "\n\n".join([
+        t(chat_id, "wallet.deleteCardTitle", name=esc(card.get("name") or "—"), last4=esc(card.get("lastFourDigits") or "····")),
+        t(chat_id, "wallet.deleteCardMessage")]), f"wal:cx:{card['id']}", f"wal:c:{card['id']}:0")
+
+
+@router.callback_query(F.data.startswith("wal:cx:"))
+async def on_card_delete_confirmed(cb: CallbackQuery, state: FSMContext) -> None:
+    """`wal:cx:{card}` — a refusal (the card still has transactions) is shown as the server says it."""
+    await common.ack(cb)
+    if not await common.gate(cb):
+        return
+    chat_id = common.chat_id_of(cb)
+    raw = cb.data.split(":")[2]
+    if not raw.isdigit():
+        await show_wallets(cb)
+        return
+    await common.begin_write(cb, chat_id)
+    try:
+        await api.request(chat_id, "DELETE", f"/cards/{raw}")
+    except api.NeedsLogin:
+        await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return
+    except api.ApiError as exc:
+        if exc.status != 404:  # already gone is what was asked for
+            await common.show(cb, t(chat_id, "common.serverUnreachable") if isinstance(exc, api.Unreachable)
+                              else f"❌ {esc(exc.message)}", ikb([ui.nav(chat_id, back=f"wal:c:{raw}:0", home=True)]))
+            return
+    await show_wallets(cb, t(chat_id, "wallet.cardDeleted"))
+
+
+# ── Where a form comes back to ──────────────────────────────────────────────
+async def route(event: TelegramObject, notice: str | None, ret: str) -> None:
+    """`wal:c:{card}:{page}`, `wal:k:{page}`, else the wallets screen — with `notice` on top."""
+    parts = ret.split(":")
+    if len(parts) > 2 and parts[1] == "c" and parts[2].isdigit():
+        await show_card(event, int(parts[2]), _page_of(parts[3]) if len(parts) > 3 else 0, notice)
+    elif len(parts) > 2 and parts[1] == "k":
+        await show_cash(event, _page_of(parts[2]), notice)
+    else:
+        await show_wallets(event, notice)
+
+
+pay.register_return("wal", route)
 
 
 # ── Add card ────────────────────────────────────────────────────────────────

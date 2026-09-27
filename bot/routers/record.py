@@ -14,7 +14,10 @@ with everything filled in, and one tap on Save books it:
   Save waits for one;
 * the wallet — the one used last (kept across restarts), else the card with the most on it.
   Never Cash by default;
-* the date — today.
+* the date — today;
+* for the salary's income (the salary tree: Salary → Salary / Avans / Bonus …) the month it is
+  for — the advisor's `suggestedSalaryMonth`; a tap cycles the month before the date's, its own and
+  the next. Only a server that suggests one gets the line, and only salary income sends it.
 
 Small buttons change the category, wallet or date; a typed number corrects the amount and typed
 words the note.
@@ -258,6 +261,30 @@ def with_category(roots: list[dict], cat: dict, parent: dict | None) -> list[dic
     return [{**r, "children": [*subs(r), cat]} if r.get("id") == parent.get("id") else r for r in roots]
 
 
+def salary_tree(roots: list[dict]) -> set:
+    """The ids of the salary's categories — the server's rule (OverviewService.salaryTree): the
+    top-level category above the bonus-flagged sub-categories, else the income one named
+    "Salary"; with everything under it."""
+    tops = [r for r in roots if any(c.get("bonusIncome") for c in subs(r))]
+    if not tops:
+        tops = [r for r in roots if r.get("type") != "EXPENSE" and _norm(r.get("name")) == "salary"]
+    return {c.get("id") for r in tops for c in (r, *subs(r))}
+
+
+def salary_months(month: str | None, date: str) -> tuple[str, str]:
+    """(the month it is for now, the month a tap moves to). As on the web, the month before the
+    date's, its own, or the next (pay can come early: October's salary on 30 September) — a tap
+    cycles previous → current → next → previous."""
+    own = str(date)[:7]
+    cycle = [ui.shift_month(own, -1), own, ui.shift_month(own, 1)]
+    current = month or own
+    return current, cycle[(cycle.index(current) + 1) % 3] if current in cycle else cycle[0]
+
+
+def valid_month(value) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value))
+
+
 def remember_words(rec: dict) -> None:
     """Next time one of these words is typed without a keyword, suggest this category."""
     if rec.get("cat") is None or not rec.get("note"):
@@ -384,7 +411,23 @@ async def _render(event: TelegramObject, state: FSMContext, text: str,
     await state.update_data(rec_ui=sent.message_id)
 
 
-def _card_text(chat_id: int, rec: dict, error: str = "") -> str:
+def _is_salary(rec: dict, roots: list[dict]) -> bool:
+    """Income filed (or about to be) in the salary tree — the only entries with a salary month."""
+    cat = rec.get("cat") if rec.get("cat") is not None else rec.get("pick")
+    return rec.get("type") == "INCOME" and cat is not None and cat in salary_tree(roots)
+
+
+async def _suggested_salary_month(chat_id: int) -> str | None:
+    """The advisor's `suggestedSalaryMonth`; None from a server that has no salary months."""
+    try:
+        month = (await home.fetch(chat_id)).get("suggestedSalaryMonth")
+    except Exception:  # noqa: BLE001 — the line is a nicety; Save reports a real failure
+        log.debug("no salary-month suggestion for chat %s", chat_id, exc_info=True)
+        return None
+    return month if valid_month(month) else None
+
+
+def _card_text(chat_id: int, rec: dict, error: str = "", salary: bool = False) -> str:
     head = "record.card.income" if rec["type"] == "INCOME" else "record.card.expense"
     wallet = ("💵 " + t(chat_id, "common.cash") if rec.get("card") is None
               else "💳 " + esc(rec.get("wallet") or f"#{rec['card']}"))
@@ -398,6 +441,8 @@ def _card_text(chat_id: int, rec: dict, error: str = "") -> str:
              "🏷 " + category,
              wallet,
              "📅 " + ui.day(chat_id, rec["date"], relative=True)]
+    if salary and rec.get("salaryMonth"):
+        lines.append(t(chat_id, "record.card.salaryFor", month=ui.month_text(chat_id, rec["salaryMonth"])))
     if rec.get("note"):
         lines.append("📝 " + esc(rec["note"]))
     if error:
@@ -410,7 +455,7 @@ def _open(root: dict) -> str:
     return f"qa:co:{root['id']}" if subs(root) else f"qa:c:{root['id']}"
 
 
-def _card_kb(chat_id: int, rec: dict, roots: list[dict]) -> InlineKeyboardMarkup:
+def _card_kb(chat_id: int, rec: dict, roots: list[dict], salary: bool = False) -> InlineKeyboardMarkup:
     rows: list[list[tuple[str, str]]] = []
     pick = root_by_id(roots, rec.get("pick"))
     if pick is not None:
@@ -424,6 +469,9 @@ def _card_kb(chat_id: int, rec: dict, roots: list[dict]) -> InlineKeyboardMarkup
                 items.append((t(chat_id, "record.btn.more"), "qa:cats"))
             rows += ui.grid(items, 3)
         rows.append([(t(chat_id, "record.btn.save"), "qa:save")])
+    if salary and rec.get("salaryMonth"):
+        other = salary_months(rec["salaryMonth"], rec["date"])[1]
+        rows.append([(t(chat_id, "record.btn.salaryMonth", month=ui.month_text(chat_id, other)), "qa:sm")])
     small = [(t(chat_id, "record.btn.wallet"), "qa:ws"), (t(chat_id, "record.btn.date"), "qa:ds")]
     if pick is not None:
         small.insert(0, (t(chat_id, "record.btn.category"), "qa:ca"))
@@ -443,9 +491,12 @@ async def show_card(event: TelegramObject, state: FSMContext, *, error: str = ""
     rec = dict(d["rec"], step=None)
     if rec.get("pick") is not None and not subs(root_by_id(roots, rec["pick"])):
         rec.update(NO_CATEGORY)  # its sub-categories are gone: nothing is left to wait for
+    salary = _is_salary(rec, roots)
+    if salary and "salaryMonth" not in rec:  # asked once per draft, the first time it is salary
+        rec["salaryMonth"] = await _suggested_salary_month(chat_id)
     await state.update_data(rec=rec)
     await state.set_state(Record.card)
-    await _render(event, state, _card_text(chat_id, rec, error), _card_kb(chat_id, rec, roots))
+    await _render(event, state, _card_text(chat_id, rec, error, salary), _card_kb(chat_id, rec, roots, salary))
 
 
 async def _draft(cb: CallbackQuery, state: FSMContext) -> dict | None:
@@ -789,6 +840,20 @@ async def on_date(cb: CallbackQuery, state: FSMContext) -> None:
     await show_card(cb, state)
 
 
+# ── The salary's month ──────────────────────────────────────────────────────
+@router.callback_query(F.data == "qa:sm")
+async def on_salary_month(cb: CallbackQuery, state: FSMContext) -> None:
+    """The salary's month: previous → current → next → previous, around the date's month."""
+    d = await _draft(cb, state)
+    if d is None:
+        return
+    rec = d["rec"]
+    if rec.get("salaryMonth"):
+        rec = dict(rec, salaryMonth=salary_months(rec["salaryMonth"], rec["date"])[1])
+        await state.update_data(rec=rec)
+    await show_card(cb, state)
+
+
 # ── Note, type, back ────────────────────────────────────────────────────────
 @router.callback_query(F.data == "qa:n")
 async def on_note(cb: CallbackQuery, state: FSMContext) -> None:
@@ -871,7 +936,7 @@ async def on_repeat(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ── Save ────────────────────────────────────────────────────────────────────
-def _payload(rec: dict) -> dict:
+def _payload(rec: dict, salary: bool = False) -> dict:
     card = rec.get("card")
     body: dict = {"type": rec["type"], "amount": rec["amount"], "currency": CURRENCY,
                   "transactionDate": rec["date"], "subType": _sub(rec["type"]),
@@ -883,6 +948,8 @@ def _payload(rec: dict) -> dict:
         body["categoryId"] = rec["cat"]
     if rec.get("note"):
         body["description"] = rec["note"]
+    if salary and rec.get("salaryMonth"):
+        body["salaryMonth"] = rec["salaryMonth"]
     return body
 
 
@@ -899,7 +966,8 @@ async def on_save(cb: CallbackQuery, state: FSMContext) -> None:
         return
     await common.begin_write(cb, chat_id)
     try:
-        await api.request(chat_id, "POST", "/transactions", json=_payload(rec))
+        await api.request(chat_id, "POST", "/transactions",
+                          json=_payload(rec, _is_salary(rec, d.get("rec_roots") or [])))
     except api.NeedsLogin:
         await state.clear()
         await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))

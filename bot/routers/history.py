@@ -13,7 +13,9 @@ is added up from exactly those rows.
   keeps a special entry's kind) and Delete (asks first). The category follows the web's edit form:
   a category with sub-categories needs one of them — only a row already on the category itself
   may stay there — the one used last under it is ticked, its only one is taken as it is, and a
-  category or sub-category can be created on the way (see `record.create_category`).
+  category or sub-category can be created on the way (see `record.create_category`). Salary income
+  shows the month it is for (a tap cycles it, see `record.salary_months`); a salary row for another
+  month is tagged "(for September)" in the list.
 * **🔎 Search** — asks for a word and filters the month, as the web's search box does.
 
 The list block and the transaction screens are shared with 👛 Wallets (a wallet's recent
@@ -75,10 +77,6 @@ _KIND = {
     "TRANSFER_IN": "history.kind.transfer",
     "TRANSFER_OUT": "history.kind.transfer",
 }
-# Listed literally so tools/check.py can see every key is used.
-_MONTHS_FULL = ("common.monthFull.1", "common.monthFull.2", "common.monthFull.3", "common.monthFull.4",
-                "common.monthFull.5", "common.monthFull.6", "common.monthFull.7", "common.monthFull.8",
-                "common.monthFull.9", "common.monthFull.10", "common.monthFull.11", "common.monthFull.12")
 
 
 class HistSearch(StatesGroup):
@@ -106,7 +104,7 @@ def valid_month(value: str) -> bool:
 
 def month_name(chat_id: int | None, month: str) -> str:
     """`2026-09` → "September"."""
-    return t(chat_id, _MONTHS_FULL[int(month[5:7]) - 1])
+    return ui.month_name(chat_id, month)
 
 
 def month_label(chat_id: int | None, month: str) -> str:
@@ -296,6 +294,9 @@ def list_block(chat_id: int | None, rows: list[dict], start: int, origin: str,
             lines.append(day_header(chat_id, date))
         line = t(chat_id, "history.row", n=i, amount=signed(tx, portion(tx) if portion else None),
                  title=esc(_title(chat_id, tx)))
+        salary_month = str(tx.get("salaryMonth") or "")[:7]
+        if record.valid_month(salary_month) and salary_month != date[:7]:
+            line += " " + t(chat_id, "history.forMonth", month=ui.month_text(chat_id, salary_month))
         cat = tx.get("category")
         if isinstance(cat, dict) and str(tx.get("description") or "").strip():
             line += f" · <i>{esc(home.clip(cat_name(chat_id, cat), 20))}</i>"
@@ -508,6 +509,8 @@ def detail_text(chat_id: int | None, tx: dict) -> str:
         lines.append(t(chat_id, "history.detailCard", name=esc(_card_label(card))))
     else:
         lines.append(t(chat_id, "history.detailCash"))
+    if record.valid_month(str(tx.get("salaryMonth") or "")[:7]):
+        lines.append(t(chat_id, "record.card.salaryFor", month=ui.month_text(chat_id, str(tx["salaryMonth"])[:7])))
     if tx.get("note"):
         lines.append(t(chat_id, "history.detailNote", note=esc(tx["note"])))
     return "\n".join(lines)
@@ -656,12 +659,23 @@ def draft_of(chat_id: int | None, tx: dict, origin: str) -> dict:
         "date": str(tx.get("transactionDate") or clock.today_iso())[:10],
         "desc": str(tx.get("description") or ""), "note": tx.get("note") or "",
         "investmentId": tx.get("investmentId"),
+        # The salary's month: only a server that has them sends the key; sent back only when changed.
+        "salaryMonth": str(tx["salaryMonth"])[:7] if tx.get("salaryMonth") else None,
+        "smKnown": "salaryMonth" in tx, "smChanged": False,
     }
+
+
+def _is_salary(he: dict, roots: list[dict] | None) -> bool:
+    """Salary income on a server that keeps salary months (see record.salary_tree)."""
+    return bool(he.get("smKnown")) and he.get("type") == "INCOME" and he.get("cat") in record.salary_tree(roots or [])
 
 
 async def edit_screen(event, state: FSMContext, error: str = "") -> None:
     chat_id = common.chat_id_of(event)
-    he = (await state.get_data()).get("he") or {}
+    d = await state.get_data()
+    he = d.get("he") or {}
+    salary = _is_salary(he, d.get("he_roots"))
+    month, other = record.salary_months(he.get("salaryMonth"), he.get("date") or clock.today_iso())
     type_word = t(chat_id, "history.typeIncome" if he.get("type") == "INCOME" else "history.typeExpense")
     lines = [t(chat_id, "history.editTitle", type=type_word), "",
              t(chat_id, "history.editAmount", amount=fmt_money(he.get("amount")))]
@@ -671,6 +685,8 @@ async def edit_screen(event, state: FSMContext, error: str = "") -> None:
     lines.append("💳 " + esc(he.get("wallet") or "—") if he.get("card") is not None
                  else "💵 " + t(chat_id, "common.cash"))
     lines.append("📅 " + _long_date(chat_id, he.get("date")))
+    if salary:
+        lines.append(t(chat_id, "record.card.salaryFor", month=ui.month_text(chat_id, month)))
     lines.append("📝 " + esc(he["desc"]) if he.get("desc") else t(chat_id, "history.editDescNone"))
     if error:
         lines += ["", error, t(chat_id, "history.notSaved")]
@@ -679,6 +695,7 @@ async def edit_screen(event, state: FSMContext, error: str = "") -> None:
         [(t(chat_id, "history.btnAmount"), "hist:ea"), (t(chat_id, "history.btnCategory"), "hist:ec")],
         [(t(chat_id, "history.btnWallet"), "hist:ew"), (t(chat_id, "history.btnDate"), "hist:ed")],
         [(t(chat_id, "history.btnDesc"), "hist:en")],
+        [(t(chat_id, "record.btn.salaryMonth", month=ui.month_text(chat_id, other)), "hist:esm")] if salary else [],
         [(t(chat_id, "history.btnSave"), "hist:es")],
         ui.nav(chat_id, back=f"hist:t:{he.get('id')}:{he.get('origin', '')}", home=True),
     ]))
@@ -715,7 +732,21 @@ async def on_edit(cb: CallbackQuery, state: FSMContext) -> None:
     if locked(tx):
         await show_detail(cb, state, *ref)
         return
-    await state.update_data(he=draft_of(chat_id, tx, ref[1]), he_roots=None, he_cards=None)
+    he = draft_of(chat_id, tx, ref[1])
+    await state.update_data(he=he, he_roots=None, he_cards=None)
+    if he["smKnown"] and he["type"] == "INCOME":
+        await _roots(chat_id, state, he)  # whether it is the salary's income decides the month line
+    await edit_screen(cb, state)
+
+
+@router.callback_query(F.data == "hist:esm")
+async def on_edit_salary_month(cb: CallbackQuery, state: FSMContext) -> None:
+    """The salary's month: previous → current → next → previous, around the date's month."""
+    he = await _draft(cb, state)
+    if he is None:
+        return
+    other = record.salary_months(he.get("salaryMonth"), he.get("date") or clock.today_iso())[1]
+    await state.update_data(he=dict(he, salaryMonth=other, smChanged=True))
     await edit_screen(cb, state)
 
 
@@ -1084,7 +1115,7 @@ async def on_edit_desc_typed(message: Message, state: FSMContext) -> None:
 
 
 # Save
-def edit_payload(he: dict) -> dict:
+def edit_payload(he: dict, salary: bool = False) -> dict:
     """The web's edit request: the kind, the stored links and the note ride along unchanged."""
     amount = float(he["amount"])
     card = he.get("card")
@@ -1101,6 +1132,8 @@ def edit_payload(he: dict) -> dict:
         body["categoryId"] = he["cat"]
     if he.get("investmentId") is not None:
         body["investmentId"] = he["investmentId"]
+    if salary and he.get("smChanged") and he.get("salaryMonth"):
+        body["salaryMonth"] = he["salaryMonth"]  # left out, the server keeps the stored month
     return body
 
 
@@ -1122,7 +1155,8 @@ async def on_edit_save(cb: CallbackQuery, state: FSMContext) -> None:
         return
     await common.begin_write(cb, chat_id)
     try:
-        await api.request(chat_id, "PUT", f"/transactions/{he['id']}", json=edit_payload(he))
+        salary = _is_salary(he, (await state.get_data()).get("he_roots"))
+        await api.request(chat_id, "PUT", f"/transactions/{he['id']}", json=edit_payload(he, salary))
     except api.NeedsLogin:
         await state.clear()
         await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))

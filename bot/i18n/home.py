@@ -23,6 +23,7 @@ EN: dict[str, str] = {
 
     "home.savings.title": "<b>Savings this month</b>",
     "home.savings.row": "• {name} · {paid} of {target}",
+    "home.savings.carried": "incl. {amount} from {month}",
     "home.savings.done": "• {name} · ✓ {amount}",
     "home.bucket.donation": "Donation",
     "home.bucket.emergency": "Emergency fund",
@@ -74,6 +75,7 @@ UZ: dict[str, str] = {
 
     "home.savings.title": "<b>Shu oydagi jamgʻarmalar</b>",
     "home.savings.row": "• {name} · {target} dan {paid}",
+    "home.savings.carried": "shu jumladan {month} dan qolgan {amount}",
     "home.savings.done": "• {name} · ✓ {amount}",
     "home.bucket.donation": "Xayriya",
     "home.bucket.emergency": "Favqulodda jamgʻarma",

@@ -618,6 +618,7 @@ class Field:
     future: bool = False                      # date: offer dates ahead rather than behind
     min_month: str | None = None              # month: the earliest month on offer
     skip_label: str | None = None             # the optional answer's button, default "Skip"
+    per_row: int | None = None                # buttons to a row, when the kind's default is wrong
 
 
 @dataclass(frozen=True)
@@ -738,6 +739,7 @@ async def _ask(event, state: FSMContext, form: dict, f: Field) -> None:
     per_row = {"day": 7, "month": 3, "date": 2}.get(f.kind, 1)
     if f.kind in ("category", "person"):
         per_row = 2
+    per_row = f.per_row or per_row
     buttons = [(o["t"], f"pay:f:o:{i}") for i, o in enumerate(opts)]
     rows += ui.grid(buttons, per_row)
     if f.kind == "month":

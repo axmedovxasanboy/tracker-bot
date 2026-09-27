@@ -185,8 +185,9 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
         for r in rows:
             name = home.savings_name(chat_id, r)
             ref = r.get("refId") if r.get("bucket") == "GOAL" else 0
+            total = home.savings_total(r)
             if _n(r.get("remaining")) <= 0:
-                over = _n(r.get("paid")) - _n(r.get("target")) if _n(r.get("target")) > 0 else 0
+                over = _n(r.get("paid")) - total if total > 0 else 0
                 row = t(chat_id, "savings.month.done", name=esc(name), amount=fmt_money(_n(r.get("paid"))))
                 if over >= 1:
                     row += " · " + t(chat_id, "savings.month.over", amount=fmt_money(over))
@@ -194,7 +195,8 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
                 buttons.append((home.clip("➕ " + name), f"pay:m:{r['bucket']}:{ref}:sav"))
             else:
                 lines.append(t(chat_id, "savings.month.row", name=esc(name), paid=fmt_num(_n(r.get("paid"))),
-                               target=fmt_money(_n(r.get("target")))))
+                               target=fmt_money(total))
+                             + home.carried_note(chat_id, r, str(data.get("date") or clock.today_iso())[:7]))
                 buttons.append((home.clip("💳 " + name), f"pay:{r['bucket']}:{ref}:sav"))
     em_total = sum(_n(e.get("amount")) for e in emergencies) + sum(value_of(i) for i in em_holdings)
     year = clock.today_iso()[:4]

@@ -26,6 +26,7 @@ EN: dict[str, str] = {
     "record.card.incomeTitle": "➕ <b>Income</b>",
     "record.card.noCategory": "<i>No category — pick one below</i>",
     "record.card.pickSub": "{name} › <i>which one? Pick it below</i>",
+    "record.card.salaryFor": "📅 For: {month}",
     "record.notSaved": "Nothing was saved. Fix it and tap Save again.",
 
     "record.btn.save": "✅ Save",
@@ -39,6 +40,7 @@ EN: dict[str, str] = {
     "record.btn.noCategory": "No category",
     "record.btn.newCategory": "➕ New category",
     "record.btn.newSub": "➕ New sub-category",
+    "record.btn.salaryMonth": "⇄ For {month} instead",
     "record.btn.expense": "➖ Expense",
     "record.btn.income": "➕ Income",
     "record.btn.repeat": "🔁 Repeat last",
@@ -75,6 +77,7 @@ UZ: dict[str, str] = {
     "record.card.incomeTitle": "➕ <b>Daromad</b>",
     "record.card.noCategory": "<i>Kategoriya yoʻq — pastdan tanlang</i>",
     "record.card.pickSub": "{name} › <i>qaysi biri? Pastdan tanlang</i>",
+    "record.card.salaryFor": "📅 Qaysi oy uchun: {month}",
     "record.notSaved": "Hech narsa saqlanmadi. Toʻgʻrilab, Saqlashni yana bosing.",
 
     "record.btn.save": "✅ Saqlash",
@@ -88,6 +91,7 @@ UZ: dict[str, str] = {
     "record.btn.noCategory": "Kategoriyasiz",
     "record.btn.newCategory": "➕ Yangi kategoriya",
     "record.btn.newSub": "➕ Yangi ichki kategoriya",
+    "record.btn.salaryMonth": "⇄ {month} uchun qilish",
     "record.btn.expense": "➖ Xarajat",
     "record.btn.income": "➕ Daromad",
     "record.btn.repeat": "🔁 Oxirgisini takrorlash",

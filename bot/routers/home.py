@@ -1,7 +1,8 @@
 """Home — the pocket advisor, built from `GET /advisor` (the same answer the web Home renders).
 
 Top to bottom, mirroring the web: the date; how much can be spent a day and until when; the pace
-warning or the "short" warning; what is coming up; this month's savings; what the owner has.
+warning or the "short" warning; what is coming up; this month's savings (a row asks for this
+month's target plus whatever earlier months left unpaid — its `carried`); what the owner has.
 Pay buttons sit only where the web puts a Pay button — this month's rows that are still to pay —
 and at most `_MAX_PAY` of them; everything else is for the web app. The bottom rows are the
 three things the bot is for: record (➕ Add, or just type "50000 lunch"), pay, check wallets.
@@ -78,6 +79,21 @@ def savings_rows(data: dict) -> list[dict]:
     rows = [r for r in rows if isinstance(r, dict)]
     return ([r for r in rows if r.get("bucket") in BUCKETS]
             + [r for r in rows if r.get("bucket") == "GOAL" and r.get("refId") is not None])
+
+
+def savings_total(row: dict) -> float:
+    """What a savings row asks for now: this month's target plus what earlier months left unpaid
+    (`carried`, absent on an older server). The server's `remaining` is this minus what is paid."""
+    return n(row.get("target")) + max(0.0, n(row.get("carried")))
+
+
+def carried_note(chat_id: int | None, row: dict, month: str) -> str:
+    """" · incl. 300 000 UZS from Aug" — only when earlier months left some of it unpaid."""
+    carried = n(row.get("carried"))
+    if carried <= 0:
+        return ""
+    return " · " + t(chat_id, "home.savings.carried", amount=fmt_money(carried),
+                     month=ui.month_short(chat_id, ui.shift_month(month, -1)))
 
 
 def savings_name(chat_id: int | None, row: dict) -> str:
@@ -161,7 +177,7 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
                 lines.append(t(chat_id, "home.savings.done", name=name, amount=fmt_money(n(r.get("paid")))))
                 continue
             lines.append(t(chat_id, "home.savings.row", name=name, paid=fmt_num(n(r.get("paid"))),
-                           target=fmt_money(n(r.get("target")))))
+                           target=fmt_money(savings_total(r))) + carried_note(chat_id, r, month))
             cb = pay_callback("GOAL", r["refId"]) if r.get("bucket") == "GOAL" else pay_callback(r["bucket"])
             pays.append((clip("💳 " + savings_name(chat_id, r)), cb))
 

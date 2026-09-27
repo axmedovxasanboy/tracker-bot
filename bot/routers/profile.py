@@ -116,14 +116,23 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     lines.append(t(chat_id, "profile.total", value=f"{percent_text(chat_id, p.get('totalPercent'))}%"))
 
     # ── To set aside this month ──
+    # As on Home: this month's amount plus what earlier months left unpaid (`carried`, when sent).
     base = n(p.get("savingsBase"))
+    month = str(p.get("month") or clock.month())[:7]
     lines += ["", t(chat_id, "profile.setAsideTitle")]
     for b in buckets:
+        carried = max(0.0, n(b.get("carried")))
         lines.append(t(chat_id, "profile.setAsideRow", name=bucket_name(chat_id, b["bucket"]),
-                       amount=fmt_money(n(b.get("amount")))))
-        lines.append(t(chat_id, "profile.percentOf", percent=percent_text(chat_id, b.get("percent")),
-                       base=fmt_money(base)) if n(b.get("percent")) > 0 else t(chat_id, "profile.notThisMonthRow"))
-    lines.append(t(chat_id, "profile.total", value=fmt_money(n(p.get("totalAmount")))))
+                       amount=fmt_money(n(b.get("amount")) + carried)))
+        if n(b.get("percent")) > 0:
+            lines.append(t(chat_id, "profile.percentOf", percent=percent_text(chat_id, b.get("percent")),
+                           base=fmt_money(base)) + home.carried_note(chat_id, b, month))
+        elif carried > 0:
+            lines.append("   " + home.carried_note(chat_id, b, month).removeprefix(" · "))
+        else:
+            lines.append(t(chat_id, "profile.notThisMonthRow"))
+    carried_total = sum(max(0.0, n(b.get("carried"))) for b in buckets)
+    lines.append(t(chat_id, "profile.total", value=fmt_money(n(p.get("totalAmount")) + carried_total)))
     parts = p.get("baseParts") if isinstance(p.get("baseParts"), dict) else None
     bonus = n(parts.get("bonus")) if parts else n(p.get("bonusThisMonth"))
     if bonus > 0:
@@ -134,7 +143,6 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     # ── This month so far ──
     income, allocated = p.get("incomeThisMonth"), p.get("allocatedThisMonth")
     if isinstance(income, dict) or isinstance(allocated, dict):
-        month = str(p.get("month") or clock.month())[:7]
         lines += ["", t(chat_id, "profile.soFar", month=history.month_name(chat_id, month))]
     if isinstance(income, dict):
         # Only what the percentages apply to — salary, avans, bonus (the owner's call on the web).
@@ -161,13 +169,16 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
         for r in rows:
             share = r.get("percentOfBase") if "percentOfBase" in r else r.get("percentOfIncome")
             target = r.get("target")
+            if target is not None:
+                target = home.savings_total(r)  # this month's plus what earlier months left unpaid
             met = target is not None and n(target) > 0 and n(r.get("amount")) >= n(target)
             lines.append(t(chat_id, "profile.allocRow", name=bucket_name(chat_id, r["bucket"]),
                            amount=fmt_money(n(r.get("amount"))) + (" ✓" if met else ""),
                            share="—" if share is None else f"{_decimal(chat_id, n(share))}%"))
             extra = []
             if target is not None and n(target) > 0:
-                extra.append(t(chat_id, "profile.ofTarget", amount=fmt_money(n(target))))
+                extra.append(t(chat_id, "profile.ofTarget", amount=fmt_money(n(target)))
+                             + home.carried_note(chat_id, r, month))
             if r.get("over") is not None and n(r.get("over")) > 0:
                 extra.append(t(chat_id, "profile.overAdvice", amount=fmt_money(n(r["over"]))))
             if extra:

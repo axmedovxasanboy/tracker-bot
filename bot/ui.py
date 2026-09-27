@@ -9,7 +9,7 @@ from . import clock
 from .i18n import t
 from .keyboards import ikb
 
-__all__ = ["day", "grid", "ikb", "nav"]
+__all__ = ["day", "grid", "ikb", "month_name", "month_short", "month_text", "nav", "shift_month"]
 
 Row = list[tuple[str, str]]
 
@@ -17,6 +17,9 @@ Row = list[tuple[str, str]]
 _MONTHS = ("common.mon.1", "common.mon.2", "common.mon.3", "common.mon.4", "common.mon.5",
            "common.mon.6", "common.mon.7", "common.mon.8", "common.mon.9", "common.mon.10",
            "common.mon.11", "common.mon.12")
+_MONTHS_FULL = ("common.monthFull.1", "common.monthFull.2", "common.monthFull.3", "common.monthFull.4",
+                "common.monthFull.5", "common.monthFull.6", "common.monthFull.7", "common.monthFull.8",
+                "common.monthFull.9", "common.monthFull.10", "common.monthFull.11", "common.monthFull.12")
 # Monday first, as `date.weekday()` counts.
 _WEEKDAYS = ("common.wd.0", "common.wd.1", "common.wd.2", "common.wd.3", "common.wd.4",
              "common.wd.5", "common.wd.6")
@@ -57,3 +60,26 @@ def day(chat_id: int | None, value, *, weekday: bool = False, relative: bool = F
             return t(chat_id, "common.yesterday")
     text = f"{d.day} {t(chat_id, _MONTHS[d.month - 1])}"
     return f"{t(chat_id, _WEEKDAYS[d.weekday()])} {text}" if weekday else text
+
+
+def shift_month(ym: str, delta: int) -> str:
+    """`2026-01`, -1 → `2025-12`."""
+    total = int(ym[:4]) * 12 + int(ym[5:7]) - 1 + delta
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def month_name(chat_id: int | None, ym: str) -> str:
+    """`2026-09` → "September"."""
+    return t(chat_id, _MONTHS_FULL[int(str(ym)[5:7]) - 1])
+
+
+def month_short(chat_id: int | None, ym: str) -> str:
+    """`2026-08` → "Aug"."""
+    return t(chat_id, _MONTHS[int(str(ym)[5:7]) - 1])
+
+
+def month_text(chat_id: int | None, ym: str) -> str:
+    """"September", or "December 2025" when it is not this year."""
+    if str(ym)[:4] == str(clock.today().year):
+        return month_name(chat_id, ym)
+    return t(chat_id, "common.monthYear", month=month_name(chat_id, ym), year=str(ym)[:4])
