@@ -287,7 +287,8 @@ async def _wallet_screen(event, state: FSMContext) -> None:
     flow = d.get("pay") or {}
     lines = [_header(chat_id, flow)]
     if flow.get("account"):
-        lines.append(t(chat_id, "pay.into", name=esc(flow["account"])))
+        key = "pay.kindOf" if flow.get("kind") == "DONATION" else "pay.into"
+        lines.append(t(chat_id, key, name=esc(flow["account"])))
     if flow.get("note"):
         lines.append(flow["note"])
     lines += ["", t(chat_id, "pay.intoWhich" if flow.get("incoming") else "pay.fromWhich")]
@@ -308,7 +309,8 @@ async def _account_screen(event, state: FSMContext) -> None:
             for i, o in enumerate(d.get("pay_accounts") or [])]
     rows.append(ui.nav(chat_id, cancel=flow.get("ret") or "home"))
     await state.set_state(Pay.pick)
-    await common.show(event, _header(chat_id, flow) + "\n\n" + t(chat_id, "pay.payInto"), ikb(rows))
+    ask = "pay.whichKind" if kind == "DONATION" else "pay.payInto"
+    await common.show(event, _header(chat_id, flow) + "\n\n" + t(chat_id, ask), ikb(rows))
 
 
 async def _amount_screen(event, state: FSMContext) -> None:
@@ -338,6 +340,8 @@ async def start_quick(event, state: FSMContext, flow: dict, data: dict | None = 
         if flow.get("kind") in ("EMERGENCY", "INVESTMENTS") and flow.get("accountId") is None:
             holdings = await api.request(chat_id, "GET", "/finance/investments") or []
             options = _options(chat_id, flow["kind"], holdings)
+        elif flow.get("kind") == "DONATION" and flow.get("accountId") is None:
+            options = await _donation_kinds(chat_id)
     except Exception as exc:  # noqa: BLE001
         await state.clear()
         await report(event, exc, flow.get("ret") or "home")
@@ -359,6 +363,23 @@ async def start_quick(event, state: FSMContext, flow: dict, data: dict | None = 
         await _account_screen(event, state)
     else:
         await _wallet_screen(event, state)
+
+
+async def _donation_kinds(chat_id: int) -> list[dict] | None:
+    """The Donation category's sub-categories as pick options, the one used last first — the web's
+    Savings dialog and add form both ask for one. None when the category has none: the server then
+    files the donation under Donation itself."""
+    roots = await api.request(chat_id, "GET", "/categories",
+                              params={"type": "EXPENSE", "subType": "DONATION"}) or []
+    # The sub-type filter also returns roots with no sub-type, so find the Donation root itself.
+    root = next((c for c in roots if isinstance(c, dict) and c.get("parentId") is None
+                 and c.get("applicableSubType") == "DONATION"), None)
+    if not root:
+        return None
+    subs = await api.request(chat_id, "GET", f"/categories/{root['id']}/sub-categories") or []
+    last = storage.pref("account.DONATION")
+    kinds = sorted((c for c in subs if isinstance(c, dict)), key=lambda c: c.get("id") != last)
+    return [{"id": c["id"], "name": cat_name(chat_id, c)} for c in kinds] or None
 
 
 def _options(chat_id: int, kind: str, holdings: list) -> list[dict]:
@@ -475,9 +496,11 @@ def _request(flow: dict, wallet: int | str | None) -> tuple[str, dict]:
     if kind == "GIVEN":
         return f"/finance/loans-given/{ref}/mark-returned", {"amount": amount, "paymentDate": today, **card}
     if kind == "DONATION":
-        # No recipient asked: saved without one, as the web does.
+        # No recipient asked: saved without one, as the web does — under the sub-category picked.
+        kind_id = flow.get("accountId")
+        category = {"categoryId": kind_id} if isinstance(kind_id, int) else {}
         return "/finance/donations", {"recipientName": "Anonymous", "anonymous": True, "amount": amount,
-                                      "currency": CURRENCY, "donationDate": today, **card}
+                                      "currency": CURRENCY, "donationDate": today, **card, **category}
     if kind == "OUT":
         return f"/finance/investments/{ref}/withdraw", {
             "amount": amount, "currency": CURRENCY, "date": today, "cardId": card_id}
