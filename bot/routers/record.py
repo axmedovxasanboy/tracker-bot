@@ -8,6 +8,10 @@ with everything filled in, and one tap on Save books it:
 * the category — from keywords (EN, UZ and common transliterations) mapped onto the owner's own
   categories by name; failing that, the category last saved with one of the words; failing that,
   none, and the card shows a row of category buttons;
+* the sub-category — the web's rule: a category that has sub-categories is never the answer
+  itself. The one used last under it is taken (one memory per parent, shared with History and
+  paying — see `pay.last_child`), else its only one, else the card shows its sub-categories and
+  Save waits for one;
 * the wallet — the one used last (kept across restarts), else the card with the most on it.
   Never Cash by default;
 * the date — today.
@@ -15,8 +19,11 @@ with everything filled in, and one tap on Save books it:
 Small buttons change the category, wallet or date; a typed number corrects the amount and typed
 words the note.
 
-**➕ Add** is the guided version: Expense / Income → amount → category (sub-categories when it has
-them) → wallet (last used first) → the same card. The note is optional.
+**➕ Add** is the guided version: Expense / Income → amount → category (then its sub-category when
+it has them — the only one is taken as it is, the one used last is ticked) → wallet (last used
+first) → the same card. The note is optional. As on the web's form, a category (➕ New category)
+or a sub-category (➕ New sub-category) can be created on the way: one name, Settings' own request
+(`settings.category_payload`), and it is picked.
 
 This router is included LAST (see main.py): it ends in the bare-text handler that turns a typed
 amount into a draft, and in the catch-all for buttons from older screens. Draft buttons carry no
@@ -146,24 +153,38 @@ def _all(roots: list[dict]):
             yield child, root
 
 
+def subs(root: dict | None) -> list[dict]:
+    """A top-level category's sub-categories (the category list carries them as `children`)."""
+    return [c for c in (root or {}).get("children") or [] if isinstance(c, dict) and c.get("id") is not None]
+
+
+def root_by_id(roots: list[dict], cat_id) -> dict | None:
+    return next((r for r in roots if cat_id is not None and str(r.get("id")) == str(cat_id)), None)
+
+
+def locate(roots: list[dict], cat_id) -> tuple[dict, dict | None] | None:
+    """(the category, its parent or None) for an id, from the category list."""
+    return next(((c, p) for c, p in _all(roots) if cat_id is not None and str(c.get("id")) == str(cat_id)), None)
+
+
 def _label(chat_id: int, cat: dict, parent: dict | None) -> str:
     return f"{cat_name(chat_id, parent)} → {cat_name(chat_id, cat)}" if parent else cat_name(chat_id, cat)
 
 
 def find_category(chat_id: int, roots: list[dict], target: str | None,
-                  cat_id: int | None) -> tuple[int, str] | None:
-    """The owner's category for a keyword target, or the remembered id — (id, label)."""
+                  cat_id: int | None) -> tuple[dict, dict | None] | None:
+    """The owner's category for a keyword target, or the remembered id — (category, its parent).
+
+    Avans and bonus land on their own sub-categories when the owner has them by name (under the
+    salary first, where the web keeps them); failing that, on the salary itself.
+    """
     if cat_id is not None:
-        for cat, parent in _all(roots):
-            if cat.get("id") == cat_id:
-                return cat_id, _label(chat_id, cat, parent)
-        return None
+        return locate(roots, cat_id)
     if target is None:
         return None
     names = _NAMES[target]
     candidates = list(_all(roots))
     if target in ("avans", "bonus"):
-        # Under the salary first: that is where the web keeps them.
         salary = [(c, p) for c, p in candidates
                   if p is not None and (_norm(p.get("name")) in _NAMES["salary"]
                                         or _norm(p.get("nameUz")) in _NAMES["salary"])]
@@ -171,10 +192,70 @@ def find_category(chat_id: int, roots: list[dict], target: str | None,
     for cat, parent in candidates:
         if _norm(cat.get("name")) in names or _norm(cat.get("nameUz")) in names \
                 or (target == "bonus" and cat.get("bonusIncome")):
-            return cat["id"], _label(chat_id, cat, parent)
+            return cat, parent
     if target in ("avans", "bonus"):
         return find_category(chat_id, roots, "salary", None)
     return None
+
+
+# The draft's category fields: `cat` the category saved (never a parent that has sub-categories),
+# `catName` its label, `parent` the category it sits under, `pick` a parent whose sub-category
+# the owner still has to choose (the card shows them, and Save waits).
+NO_CATEGORY = {"cat": None, "catName": None, "parent": None, "pick": None}
+
+
+def chosen(chat_id: int, cat: dict, parent: dict | None) -> dict:
+    return {"cat": cat["id"], "catName": _label(chat_id, cat, parent),
+            "parent": parent["id"] if parent else None, "pick": None}
+
+
+def settle(chat_id: int, cat: dict, parent: dict | None) -> dict:
+    """A new entry landing on `cat` (a keyword, a remembered word, Repeat last). A category with
+    sub-categories is not an answer: the one used last under it, else its only one, else ask."""
+    if parent is None and subs(cat):
+        child = pay.default_child(cat)
+        if child is None:
+            return {"cat": None, "catName": cat_name(chat_id, cat), "parent": None, "pick": cat["id"]}
+        cat, parent = child, cat
+    return chosen(chat_id, cat, parent)
+
+
+def same_name(cats: list[dict], name: str) -> dict | None:
+    """The category among `cats` already called `name`, in either language and any case."""
+    key = _norm(name)
+    if not key:
+        return None
+    return next((c for c in cats if key in (_norm(c.get("name")), _norm(c.get("nameUz")))), None)
+
+
+def _settings():
+    from . import settings  # settings imports history, which imports this module
+    return settings
+
+
+def name_problem(chat_id: int, name: str) -> str | None:
+    """Why a typed category name cannot be used (too long — Settings' own limit), or None."""
+    limit = _settings()._NAME_LIMIT
+    return t(chat_id, "settings.cat.tooLong", limit=limit) if len(name) > limit else None
+
+
+async def create_category(chat_id: int, name: str, cat_type: str, parent: dict | None) -> dict:
+    """Create a category while recording or editing, with Settings' own request: a new top-level
+    category of this type, or a sub-category of `parent` (it inherits the parent's type, colour and
+    settings). Raises what `api.request` raises."""
+    cf = ({"mode": "sub", "name": name, "parent": parent} if parent is not None
+          else {"mode": "new", "name": name, "type": cat_type})
+    saved = await api.request(chat_id, "POST", "/categories", json=_settings().category_payload(cf))
+    if not isinstance(saved, dict) or saved.get("id") is None:
+        raise api.ApiError(0, "The server did not return the new category.")
+    return saved
+
+
+def with_category(roots: list[dict], cat: dict, parent: dict | None) -> list[dict]:
+    """The category list with a just-created category in it (a copy; the FSM keeps plain data)."""
+    if parent is None:
+        return [*roots, {**cat, "children": list(cat.get("children") or [])}]
+    return [{**r, "children": [*subs(r), cat]} if r.get("id") == parent.get("id") else r for r in roots]
 
 
 def remember_words(rec: dict) -> None:
@@ -274,8 +355,8 @@ async def new_draft(event: TelegramObject, state: FSMContext, sign: str | None, 
     else:
         card = default_wallet(cards)
     rec = {"type": typ, "amount": amount, "date": clock.today_iso(), "note": note or None,
-           "card": card[0], "wallet": card[1], "cat": found[0] if found else None,
-           "catName": found[1] if found else None, "step": step}
+           "card": card[0], "wallet": card[1], **(settle(chat_id, *found) if found else NO_CATEGORY),
+           "step": step}
     await state.set_state(Record.card)
     await state.update_data(rec=rec, rec_roots=roots, rec_cards=cards)
     if step == "cat":
@@ -307,8 +388,14 @@ def _card_text(chat_id: int, rec: dict, error: str = "") -> str:
     head = "record.card.income" if rec["type"] == "INCOME" else "record.card.expense"
     wallet = ("💵 " + t(chat_id, "common.cash") if rec.get("card") is None
               else "💳 " + esc(rec.get("wallet") or f"#{rec['card']}"))
+    if rec.get("cat") is not None:
+        category = esc(rec["catName"])
+    elif rec.get("pick") is not None:
+        category = t(chat_id, "record.card.pickSub", name=esc(rec.get("catName") or ""))
+    else:
+        category = t(chat_id, "record.card.noCategory")
     lines = [t(chat_id, head, amount=fmt_money(rec["amount"])),
-             "🏷 " + (esc(rec["catName"]) if rec.get("cat") is not None else t(chat_id, "record.card.noCategory")),
+             "🏷 " + category,
              wallet,
              "📅 " + ui.day(chat_id, rec["date"], relative=True)]
     if rec.get("note"):
@@ -318,17 +405,29 @@ def _card_text(chat_id: int, rec: dict, error: str = "") -> str:
     return "\n".join(lines)
 
 
+def _open(root: dict) -> str:
+    """A top-level category's button: its sub-categories when it has them, else the category."""
+    return f"qa:co:{root['id']}" if subs(root) else f"qa:c:{root['id']}"
+
+
 def _card_kb(chat_id: int, rec: dict, roots: list[dict]) -> InlineKeyboardMarkup:
     rows: list[list[tuple[str, str]]] = []
-    if rec.get("cat") is None and roots:
-        items = [(home.clip(cat_name(chat_id, r)), f"qa:co:{r['id']}" if r.get("children") else f"qa:c:{r['id']}")
-                 for r in roots[:_CARD_CATEGORIES]]
-        if len(roots) > _CARD_CATEGORIES:
-            items.append((t(chat_id, "record.btn.more"), "qa:cats"))
-        rows += ui.grid(items, 3)
-    rows.append([(t(chat_id, "record.btn.save"), "qa:save")])
+    pick = root_by_id(roots, rec.get("pick"))
+    if pick is not None:
+        # A category with sub-categories: one of them before Save, or a new one.
+        rows += ui.grid([(home.clip(cat_name(chat_id, c)), f"qa:c:{c['id']}") for c in subs(pick)], 3)
+        rows.append([(t(chat_id, "record.btn.newSub"), f"qa:ns:{pick['id']}:card")])
+    else:
+        if rec.get("cat") is None and roots:
+            items = [(home.clip(cat_name(chat_id, r)), _open(r)) for r in roots[:_CARD_CATEGORIES]]
+            if len(roots) > _CARD_CATEGORIES:
+                items.append((t(chat_id, "record.btn.more"), "qa:cats"))
+            rows += ui.grid(items, 3)
+        rows.append([(t(chat_id, "record.btn.save"), "qa:save")])
     small = [(t(chat_id, "record.btn.wallet"), "qa:ws"), (t(chat_id, "record.btn.date"), "qa:ds")]
-    if rec.get("cat") is not None or not roots:
+    if pick is not None:
+        small.insert(0, (t(chat_id, "record.btn.category"), "qa:ca"))
+    elif rec.get("cat") is not None or not roots:
         small.insert(0, (t(chat_id, "record.btn.category"), "qa:cats"))
     rows.append(small)
     flip = "record.btn.toExpense" if rec["type"] == "INCOME" else "record.btn.toIncome"
@@ -340,10 +439,13 @@ def _card_kb(chat_id: int, rec: dict, roots: list[dict]) -> InlineKeyboardMarkup
 async def show_card(event: TelegramObject, state: FSMContext, *, error: str = "") -> None:
     chat_id = common.chat_id_of(event)
     d = await state.get_data()
+    roots = d.get("rec_roots") or []
     rec = dict(d["rec"], step=None)
+    if rec.get("pick") is not None and not subs(root_by_id(roots, rec["pick"])):
+        rec.update(NO_CATEGORY)  # its sub-categories are gone: nothing is left to wait for
     await state.update_data(rec=rec)
     await state.set_state(Record.card)
-    await _render(event, state, _card_text(chat_id, rec, error), _card_kb(chat_id, rec, d.get("rec_roots") or []))
+    await _render(event, state, _card_text(chat_id, rec, error), _card_kb(chat_id, rec, roots))
 
 
 async def _draft(cb: CallbackQuery, state: FSMContext) -> dict | None:
@@ -422,48 +524,101 @@ async def on_amount(message: Message, state: FSMContext) -> None:
 
 
 # ── Category ────────────────────────────────────────────────────────────────
+async def _roots(chat_id: int, state: FSMContext, d: dict) -> list[dict]:
+    return d.get("rec_roots") or await _reload_categories(chat_id, state, d["rec"]["type"])
+
+
 async def _category_screen(event: TelegramObject, state: FSMContext) -> None:
+    """Every category of this type, ➕ New category, and No category (Skip, on the way in)."""
     chat_id = common.chat_id_of(event)
     d = await state.get_data()
     rec, roots = d["rec"], d.get("rec_roots") or []
-    items = [(home.clip(cat_name(chat_id, r)), f"qa:co:{r['id']}" if r.get("children") else f"qa:c:{r['id']}")
-             for r in roots]
+    items = [(home.clip(cat_name(chat_id, r)), _open(r)) for r in roots if r.get("id") is not None]
     guided = rec.get("step") == "cat"
     rows = ui.grid(items, 2)
+    rows.append([(t(chat_id, "record.btn.newCategory"), "qa:nc")])
     rows.append([(t(chat_id, "common.skip") if guided else t(chat_id, "record.btn.noCategory"), "qa:c:none")])
     rows.append(ui.nav(chat_id, cancel="home") if guided else ui.nav(chat_id, back="qa:back"))
     text = t(chat_id, "record.categoryAsk", amount=fmt_money(rec["amount"]))
     if not roots:
         text += "\n\n" + t(chat_id, "record.noCategories")
+    await state.set_state(Record.card)
     await _render(event, state, text, ikb(rows))
+
+
+async def _sub_screen(event: TelegramObject, state: FSMContext, root: dict) -> None:
+    """A category's sub-categories — the category itself is not on offer for a new entry. The one
+    the draft is on is ticked; else the one used last under it (the web's pre-selection)."""
+    chat_id = common.chat_id_of(event)
+    rec = (await state.get_data())["rec"]
+    ticked = rec.get("cat") if rec.get("parent") == root["id"] else pay.last_child(root["id"])
+    items = [(home.clip(t(chat_id, "record.chosen", name=cat_name(chat_id, c)) if c["id"] == ticked
+                        else cat_name(chat_id, c)), f"qa:c:{c['id']}") for c in subs(root)]
+    rows = ui.grid(items, 2)
+    rows.append([(t(chat_id, "record.btn.newSub"), f"qa:ns:{root['id']}")])
+    rows.append(ui.nav(chat_id, back="qa:ca", cancel="home" if rec.get("step") == "cat" else None))
+    await state.set_state(Record.card)
+    await _render(event, state, t(chat_id, "record.subCategoryAsk", name=esc(cat_name(chat_id, root))), ikb(rows))
+
+
+async def _select(event: TelegramObject, state: FSMContext, cat: dict | None, parent: dict | None) -> None:
+    """Put this category on the draft, then on to the wallet (on the way in) or back to the card."""
+    chat_id = common.chat_id_of(event)
+    rec = dict((await state.get_data())["rec"], **(chosen(chat_id, cat, parent) if cat else NO_CATEGORY))
+    guided = rec.get("step") == "cat"
+    rec["step"] = "wallet" if guided else None
+    await state.update_data(rec=rec, rec_new=None)
+    await state.set_state(Record.card)
+    if guided:
+        await _wallet_screen(event, state)
+    else:
+        await show_card(event, state)
+
+
+async def _open_root(event: TelegramObject, state: FSMContext, root: dict) -> None:
+    """A top-level category tapped: its only sub-category is taken as it is (unless the draft is
+    already on it — then the list, to change it or add one), else the sub-categories are asked."""
+    children = subs(root)
+    if not children:
+        await _select(event, state, root, None)
+    elif len(children) == 1 and (await state.get_data())["rec"].get("parent") != root["id"]:
+        await _select(event, state, children[0], root)
+    else:
+        await _sub_screen(event, state, root)
 
 
 @router.callback_query(F.data == "qa:cats")
 async def on_categories(cb: CallbackQuery, state: FSMContext) -> None:
+    """🏷 Category on the card: the sub-categories next to the one it is on, else every category."""
     d = await _draft(cb, state)
     if d is None:
         return
-    if not d.get("rec_roots"):
-        await _reload_categories(common.chat_id_of(cb), state, d["rec"]["type"])
+    root = root_by_id(await _roots(common.chat_id_of(cb), state, d), d["rec"].get("parent"))
+    if subs(root):
+        await _sub_screen(cb, state, root)
+    else:
+        await _category_screen(cb, state)
+
+
+@router.callback_query(F.data == "qa:ca")
+async def on_all_categories(cb: CallbackQuery, state: FSMContext) -> None:
+    d = await _draft(cb, state)
+    if d is None:
+        return
+    await _roots(common.chat_id_of(cb), state, d)
     await _category_screen(cb, state)
 
 
 @router.callback_query(F.data.startswith("qa:co:"))
 async def on_category_open(cb: CallbackQuery, state: FSMContext) -> None:
-    """One category's sub-categories, with the category itself first."""
     d = await _draft(cb, state)
     if d is None:
         return
-    chat_id = common.chat_id_of(cb)
-    raw = cb.data.split(":")[2]
-    root = next((r for r in d.get("rec_roots") or [] if str(r.get("id")) == raw), None)
+    root = root_by_id(d.get("rec_roots") or [], cb.data.split(":")[2])
     if root is None:
         await _category_screen(cb, state)
         return
-    items = [(home.clip(t(chat_id, "record.useCategory", name=cat_name(chat_id, root))), f"qa:c:{root['id']}")]
-    items += [(home.clip(cat_name(chat_id, c)), f"qa:c:{c['id']}") for c in root.get("children") or []]
-    await _render(cb, state, t(chat_id, "record.subCategoryAsk", name=esc(cat_name(chat_id, root))),
-                  ikb([*ui.grid(items, 2), ui.nav(chat_id, back="qa:cats")]))
+    await _open_root(cb, state, root)
 
 
 @router.callback_query(F.data.startswith("qa:c:"))
@@ -471,18 +626,101 @@ async def on_category(cb: CallbackQuery, state: FSMContext) -> None:
     d = await _draft(cb, state)
     if d is None:
         return
-    chat_id = common.chat_id_of(cb)
     raw = cb.data.split(":")[2]
-    rec = dict(d["rec"])
-    found = find_category(chat_id, d.get("rec_roots") or [], None, int(raw)) if raw.isdigit() else None
-    rec["cat"], rec["catName"] = (found if found else (None, None))
-    guided = rec.get("step") == "cat"
-    rec["step"] = "wallet" if guided else None
-    await state.update_data(rec=rec)
-    if guided:
-        await _wallet_screen(cb, state)
+    if raw == "none":
+        await _select(cb, state, None, None)
+        return
+    found = locate(d.get("rec_roots") or [], raw) if raw.isdigit() else None
+    if found is None:
+        await _category_screen(cb, state)
+        return
+    cat, parent = found
+    if parent is None and subs(cat):
+        await _open_root(cb, state, cat)  # a category with sub-categories is not an answer itself
+        return
+    await _select(cb, state, cat, parent)
+
+
+# ── A new category or sub-category, on the way ──────────────────────────────
+async def _ask_new(event: TelegramObject, state: FSMContext, parent: dict | None, *, back: str | None = None,
+                   error: str = "") -> None:
+    """The web form's "+ New" (a category of the draft's type) and "+" (a sub-category of `parent`).
+    `back` is where Back goes; asking again after a refusal keeps the one it had."""
+    chat_id = common.chat_id_of(event)
+    d = await state.get_data()
+    rec = d["rec"]
+    if parent is None:
+        type_word = t(chat_id, "settings.cat.typeIncome" if rec["type"] == "INCOME" else "settings.cat.typeExpense")
+        text = t(chat_id, "record.newCategoryAsk", type=type_word)
     else:
-        await show_card(cb, state)
+        text = t(chat_id, "record.newSubAsk", name=esc(cat_name(chat_id, parent)))
+    back = back or d.get("rec_back") or "qa:ca"
+    await state.set_state(Record.new_cat)
+    await state.update_data(rec_new=parent["id"] if parent is not None else None, rec_back=back)
+    await _render(event, state, f"{error}\n\n{text}" if error else text, ikb([ui.nav(chat_id, back=back)]))
+
+
+@router.callback_query(F.data == "qa:nc")
+async def on_new_category(cb: CallbackQuery, state: FSMContext) -> None:
+    if await _draft(cb, state) is not None:
+        await _ask_new(cb, state, None, back="qa:ca")
+
+
+@router.callback_query(F.data.startswith("qa:ns:"))
+async def on_new_sub(cb: CallbackQuery, state: FSMContext) -> None:
+    """`qa:ns:{id}` from the sub-category list, `qa:ns:{id}:card` from the card's own row."""
+    d = await _draft(cb, state)
+    if d is None:
+        return
+    parts = cb.data.split(":")
+    root = root_by_id(d.get("rec_roots") or [], parts[2])
+    if root is None:
+        await _category_screen(cb, state)
+        return
+    await _ask_new(cb, state, root, back="qa:back" if parts[3:] == ["card"] else f"qa:co:{root['id']}")
+
+
+@router.message(StateFilter(Record.new_cat))
+async def on_new_name(message: Message, state: FSMContext) -> None:
+    """The name typed for a new category: create it (or take the one already called that) and pick it."""
+    chat_id = common.chat_id_of(message)
+    d = await state.get_data()
+    rec = d.get("rec")
+    if not isinstance(rec, dict):
+        await state.clear()
+        await home.show_home(message)
+        return
+    roots = d.get("rec_roots") or []
+    parent = root_by_id(roots, d.get("rec_new"))
+    if d.get("rec_new") is not None and parent is None:
+        await show_card(message, state)
+        return
+    name = " ".join((message.text or "").split())
+    problem = name_problem(chat_id, name) if name else None
+    if not name or problem:
+        await _ask_new(message, state, parent, error=problem or "")
+        return
+    if not await common.gate(message):
+        await state.clear()
+        return
+    cat = same_name(subs(parent) if parent is not None else roots, name)
+    if cat is None:
+        try:
+            cat = await create_category(chat_id, name, rec["type"], parent)
+        except api.NeedsLogin:
+            await state.clear()
+            await common.show(message, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+            return
+        except api.ApiError as exc:
+            # "Already exists in this scope" is a name problem: ask for another one.
+            await _ask_new(message, state, parent, error=(t(chat_id, "common.serverUnreachable")
+                                                         if isinstance(exc, api.Unreachable) else f"❌ {esc(exc.message)}"))
+            return
+        await state.update_data(rec_roots=with_category(roots, cat, parent))
+    elif parent is None and subs(cat):
+        await _open_root(message, state, cat)  # an existing category with sub-categories: pick one
+        return
+    await _select(message, state, cat, parent)
 
 
 # ── Wallet ──────────────────────────────────────────────────────────────────
@@ -589,7 +827,7 @@ async def on_flip(cb: CallbackQuery, state: FSMContext) -> None:
     d = await _draft(cb, state)
     if d is None:
         return
-    rec = dict(d["rec"], cat=None, catName=None)
+    rec = dict(d["rec"], **NO_CATEGORY)
     rec["type"] = "EXPENSE" if rec["type"] == "INCOME" else "INCOME"
     await state.update_data(rec=rec)
     await _reload_categories(common.chat_id_of(cb), state, rec["type"])
@@ -656,6 +894,9 @@ async def on_save(cb: CallbackQuery, state: FSMContext) -> None:
         return
     chat_id = common.chat_id_of(cb)
     rec = d["rec"]
+    if rec.get("pick") is not None:  # a keyboard from before the sub-category was asked for
+        await show_card(cb, state, error="❌ " + t(chat_id, "record.errSubCategory"))
+        return
     await common.begin_write(cb, chat_id)
     try:
         await api.request(chat_id, "POST", "/transactions", json=_payload(rec))
@@ -668,6 +909,7 @@ async def on_save(cb: CallbackQuery, state: FSMContext) -> None:
                                           if isinstance(exc, api.Unreachable) else f"❌ {esc(exc.message)}"))
         return
     pay.remember_wallet(rec.get("card"))
+    pay.remember_child(rec.get("parent"), rec.get("cat"))
     remember_words(rec)
     await state.clear()
     key = "record.saved.income" if rec["type"] == "INCOME" else "record.saved.expense"
@@ -702,7 +944,7 @@ async def on_card_typed(message: Message, state: FSMContext) -> None:
         sign, amount, _ = parsed
         rec = dict(rec, amount=amount)
         if sign and sign != rec["type"]:
-            rec.update(type=sign, cat=None, catName=None)
+            rec.update(type=sign, **NO_CATEGORY)
             await state.update_data(rec=rec)
             await _reload_categories(message.chat.id, state, sign)
     await state.update_data(rec=rec)

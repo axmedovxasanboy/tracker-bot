@@ -24,11 +24,13 @@ class Record(StatesGroup):
     """Recording income or an expense (quick add and ➕ Add share one draft card).
 
     `amount` is the typed amount step of ➕ Add, `note` the optional note, `card` the draft card
-    and its pickers — a message typed there corrects the draft instead of starting a new one.
+    and its pickers — a message typed there corrects the draft instead of starting a new one —
+    and `new_cat` the name of a category or sub-category created on the way.
     """
     amount = State()
     note = State()
     card = State()
+    new_cat = State()
 
 
 class Pay(StatesGroup):

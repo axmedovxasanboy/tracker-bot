@@ -93,6 +93,27 @@ def ordered_wallets(data: dict, kind: str = "pay") -> list[dict]:
     return sorted(wallets, key=rank)
 
 
+# ── Sub-categories, the one used last under each parent ─────────────────────
+# One memory per parent (`child.<parentId>`), the web's readLastChild / rememberChild: written
+# whenever something is saved under a sub-category — quick add, ➕ Add, a History edit, a
+# donation — and read by all of them. The web keeps its copy in the browser; this is the bot's.
+def last_child(parent_id: Any) -> Any:
+    """The sub-category last used under `parent_id`, or None."""
+    return storage.pref(f"child.{parent_id}") if parent_id is not None else None
+
+
+def remember_child(parent_id: Any, child_id: Any) -> None:
+    if parent_id is not None and child_id is not None:
+        storage.set_pref(f"child.{parent_id}", child_id)
+
+
+def default_child(root: dict) -> dict | None:
+    """The sub-category a new entry under `root` starts on: the one used last, else the only one."""
+    children = [c for c in root.get("children") or [] if isinstance(c, dict) and c.get("id") is not None]
+    last = last_child(root.get("id"))
+    return next((c for c in children if c["id"] == last), None) or (children[0] if len(children) == 1 else None)
+
+
 def wallet_name(chat_id: int | None, w: dict) -> str:
     return t(chat_id, "common.cash") if w.get("type") == "CASH" else str(w.get("label") or "—")
 
@@ -377,9 +398,12 @@ async def _donation_kinds(chat_id: int) -> list[dict] | None:
     if not root:
         return None
     subs = await api.request(chat_id, "GET", f"/categories/{root['id']}/sub-categories") or []
-    last = storage.pref("account.DONATION")
+    # The shared per-parent memory; before it existed, the donation kept its own.
+    last = last_child(root["id"])
+    if last is None:
+        last = storage.pref("account.DONATION")
     kinds = sorted((c for c in subs if isinstance(c, dict)), key=lambda c: c.get("id") != last)
-    return [{"id": c["id"], "name": cat_name(chat_id, c)} for c in kinds] or None
+    return [{"id": c["id"], "name": cat_name(chat_id, c), "parent": root["id"]} for c in kinds] or None
 
 
 def _options(chat_id: int, kind: str, holdings: list) -> list[dict]:
@@ -396,6 +420,7 @@ def _choose(flow: dict, option: dict) -> None:
     """Pay into this account. The plain fund is named by the flow itself ("Emergency fund")."""
     flow["accountId"] = option["id"]
     flow["account"] = None if option["id"] == _FUND else option["name"]
+    flow["parent"] = option.get("parent")  # a donation kind: the Donation category it sits under
 
 
 def _stale_data(d: dict, key: str, raw: str) -> bool:
@@ -558,7 +583,11 @@ async def on_wallet(cb: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     if not none:
         remember_wallet(wallet if isinstance(wallet, int) else None, "pay")
-    if flow.get("accountId") is not None:
+    if flow.get("kind") == "DONATION":
+        if flow.get("parent") is not None and flow.get("accountId") is not None:
+            remember_child(flow["parent"], flow["accountId"])
+            storage.set_pref("account.DONATION", None)  # superseded by the shared memory
+    elif flow.get("accountId") is not None:
         storage.set_pref(f"account.{flow['kind']}", flow["accountId"])
     name = esc(flow["name"] + (f" · {flow['account']}" if flow.get("account") else ""))
     await back_to(cb, flow.get("ret"), _done(chat_id, flow, wallet_label, name))

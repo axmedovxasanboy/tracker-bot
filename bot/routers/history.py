@@ -10,7 +10,10 @@ is added up from exactly those rows.
 * **Where it went** — Out by top-level category, the six largest, the rest as "Other".
 * **The list** — 10 a page, newest first, grouped by day. A number button opens one transaction:
   Edit (amount, category, wallet, date, description — plain income and expenses only, as the web
-  keeps a special entry's kind) and Delete (asks first).
+  keeps a special entry's kind) and Delete (asks first). The category follows the web's edit form:
+  a category with sub-categories needs one of them — only a row already on the category itself
+  may stay there — the one used last under it is ticked, its only one is taken as it is, and a
+  category or sub-category can be created on the way (see `record.create_category`).
 * **🔎 Search** — asks for a word and filters the month, as the web's search box does.
 
 The list block and the transaction screens are shared with 👛 Wallets (a wallet's recent
@@ -40,7 +43,7 @@ from ..config import CURRENCY
 from ..i18n import cat_name, t
 from ..keyboards import esc, ikb
 from ..money import fmt_money, fmt_num, parse_amount
-from . import home
+from . import home, pay, record
 
 router = Router(name="history")
 log = logging.getLogger(__name__)
@@ -84,11 +87,13 @@ class HistSearch(StatesGroup):
 
 
 class HistEdit(StatesGroup):
-    """Editing one transaction: the edit card, and the three steps that read typed text."""
+    """Editing one transaction: the edit card, and the steps that read typed text (the last one
+    is the name of a category created on the way)."""
     card = State()
     amount = State()
     date = State()
     desc = State()
+    new_cat = State()
 
 
 n = home.n
@@ -647,7 +652,7 @@ def draft_of(chat_id: int | None, tx: dict, origin: str) -> dict:
         "card": card.get("id") if on_card else None, "wallet": card.get("name") if on_card else None,
         "split": on_card and cash > 0, "cash": cash if on_card else 0.0,
         "cat": cat.get("id") if cat else None, "catName": cat_name(chat_id, cat) if cat else None,
-        "origCat": cat.get("id") if cat else None,
+        "catParent": cat.get("parentId") if cat else None, "origCat": cat.get("id") if cat else None,
         "date": str(tx.get("transactionDate") or clock.today_iso())[:10],
         "desc": str(tx.get("description") or ""), "note": tx.get("note") or "",
         "investmentId": tx.get("investmentId"),
@@ -763,39 +768,89 @@ async def _roots(chat_id: int, state: FSMContext, he: dict) -> list[dict]:
     return roots
 
 
+async def _pick(event, state: FSMContext, he: dict, cat: dict, parent: dict | None) -> None:
+    chat_id = common.chat_id_of(event)
+    await state.update_data(he=dict(he, cat=cat["id"], catName=_cat_label(chat_id, cat, parent),
+                                    catParent=parent["id"] if parent else None), he_new=None)
+    await edit_screen(event, state)
+
+
+async def _category_screen(event, state: FSMContext, roots: list[dict]) -> None:
+    chat_id = common.chat_id_of(event)
+    items = [(home.clip(cat_name(chat_id, r)), f"hist:eco:{r['id']}" if record.subs(r) else f"hist:ecp:{r['id']}")
+             for r in roots if r.get("id") is not None]
+    text = t(chat_id, "history.categoryAsk") if roots else t(chat_id, "history.noCategories")
+    await state.set_state(HistEdit.card)
+    await common.show(event, text, ikb([*ui.grid(items, 2), [(t(chat_id, "record.btn.newCategory"), "hist:ecn")],
+                                        ui.nav(chat_id, back="hist:eb")]))
+
+
+async def _sub_screen(event, state: FSMContext, he: dict, root: dict) -> None:
+    """A category's sub-categories. The category itself only when the row already sits on it —
+    the web's rule: an edit does not have to pick a sub-category it never had. The one the row is
+    on is ticked; else the one used last under this category."""
+    chat_id = common.chat_id_of(event)
+    on_it = he.get("cat") == root["id"] or he.get("catParent") == root["id"]
+    ticked = he.get("cat") if on_it else pay.last_child(root["id"])
+
+    def label(text: str, cat_id) -> str:
+        return t(chat_id, "record.chosen", name=text) if cat_id == ticked else text
+
+    rows = []
+    if he.get("origCat") == root["id"]:  # a row of its own: the longer label must stay readable
+        rows.append([(home.clip(label(t(chat_id, "history.keepParent", name=cat_name(chat_id, root)), root["id"]), 40),
+                      f"hist:ecp:{root['id']}")])
+    rows += ui.grid([(home.clip(label(cat_name(chat_id, c), c["id"])), f"hist:ecp:{c['id']}")
+                     for c in record.subs(root)], 2)
+    await state.set_state(HistEdit.card)
+    await common.show(event, t(chat_id, "history.subCategoryAsk", name=esc(cat_name(chat_id, root))), ikb([
+        *rows, [(t(chat_id, "record.btn.newSub"), f"hist:ecs:{root['id']}")], ui.nav(chat_id, back="hist:eca")]))
+
+
+async def _open_root(event, state: FSMContext, he: dict, root: dict) -> None:
+    """A top-level category tapped: its only sub-category is taken as it is — unless the row may
+    stay on the category itself or is already on that sub-category — else the list."""
+    children = record.subs(root)
+    if not children:
+        await _pick(event, state, he, root, None)
+    elif len(children) == 1 and he.get("origCat") != root["id"] and he.get("catParent") != root["id"]:
+        await _pick(event, state, he, children[0], root)
+    else:
+        await _sub_screen(event, state, he, root)
+
+
 @router.callback_query(F.data == "hist:ec")
 async def on_edit_categories(cb: CallbackQuery, state: FSMContext) -> None:
+    """🏷 Category: the sub-categories next to the one the row is on, else every category."""
     he = await _draft(cb, state)
     if he is None:
         return
-    chat_id = common.chat_id_of(cb)
-    roots = await _roots(chat_id, state, he)
-    items = [(home.clip(cat_name(chat_id, r)), f"hist:eco:{r['id']}" if r.get("children") else f"hist:ecp:{r['id']}")
-             for r in roots if r.get("id") is not None]
-    text = t(chat_id, "history.categoryAsk") if roots else t(chat_id, "history.noCategories")
-    await common.show(cb, text, ikb([*ui.grid(items, 2), ui.nav(chat_id, back="hist:eb")]))
+    roots = await _roots(common.chat_id_of(cb), state, he)
+    root = record.root_by_id(roots, he.get("catParent") if he.get("catParent") is not None else he.get("cat"))
+    if record.subs(root):
+        await _sub_screen(cb, state, he, root)
+    else:
+        await _category_screen(cb, state, roots)
+
+
+@router.callback_query(F.data == "hist:eca")
+async def on_edit_all_categories(cb: CallbackQuery, state: FSMContext) -> None:
+    he = await _draft(cb, state)
+    if he is None:
+        return
+    await _category_screen(cb, state, await _roots(common.chat_id_of(cb), state, he))
 
 
 @router.callback_query(F.data.startswith("hist:eco:"))
 async def on_edit_category_open(cb: CallbackQuery, state: FSMContext) -> None:
-    """A category's sub-categories. The category itself only when the row already sits on it —
-    the web's rule: an edit does not have to pick a sub-category it never had."""
     he = await _draft(cb, state)
     if he is None:
         return
-    chat_id = common.chat_id_of(cb)
-    raw = cb.data.split(":")[2]
-    root = next((r for r in await _roots(chat_id, state, he) if str(r.get("id")) == raw), None)
+    root = record.root_by_id(await _roots(common.chat_id_of(cb), state, he), cb.data.split(":")[2])
     if root is None:
         await edit_screen(cb, state)
         return
-    items = []
-    if he.get("origCat") == root.get("id"):
-        items.append((home.clip(t(chat_id, "history.useCategory", name=cat_name(chat_id, root))),
-                      f"hist:ecp:{root['id']}"))
-    items += [(home.clip(cat_name(chat_id, c)), f"hist:ecp:{c['id']}") for c in root.get("children") or []]
-    await common.show(cb, t(chat_id, "history.subCategoryAsk", name=esc(cat_name(chat_id, root))),
-                      ikb([*ui.grid(items, 2), ui.nav(chat_id, back="hist:ec")]))
+    await _open_root(cb, state, he, root)
 
 
 @router.callback_query(F.data.startswith("hist:ecp:"))
@@ -803,14 +858,90 @@ async def on_edit_category_pick(cb: CallbackQuery, state: FSMContext) -> None:
     he = await _draft(cb, state)
     if he is None:
         return
-    chat_id = common.chat_id_of(cb)
-    raw = cb.data.split(":")[2]
-    for root in await _roots(chat_id, state, he):
-        for cat, parent in [(root, None), *((c, root) for c in root.get("children") or [])]:
-            if str(cat.get("id")) == raw:
-                he = dict(he, cat=cat["id"], catName=_cat_label(chat_id, cat, parent))
-    await state.update_data(he=he)
-    await edit_screen(cb, state)
+    found = record.locate(await _roots(common.chat_id_of(cb), state, he), cb.data.split(":")[2])
+    if found is None:
+        await edit_screen(cb, state)
+        return
+    cat, parent = found
+    if parent is None and record.subs(cat) and cat["id"] != he.get("origCat"):
+        await _open_root(cb, state, he, cat)  # a category with sub-categories needs one of them
+        return
+    await _pick(cb, state, he, cat, parent)
+
+
+# A new category or sub-category, on the way (the web form's "+ New" and "+")
+async def _ask_new(event, state: FSMContext, he: dict, parent: dict | None, error: str = "") -> None:
+    chat_id = common.chat_id_of(event)
+    if parent is None:
+        type_word = t(chat_id, "settings.cat.typeIncome" if he.get("type") == "INCOME" else "settings.cat.typeExpense")
+        text, back = t(chat_id, "record.newCategoryAsk", type=type_word), "hist:eca"
+    else:
+        text, back = t(chat_id, "record.newSubAsk", name=esc(cat_name(chat_id, parent))), f"hist:eco:{parent['id']}"
+    await state.set_state(HistEdit.new_cat)
+    await state.update_data(he_new=parent["id"] if parent is not None else None)
+    await common.show(event, f"{error}\n\n{text}" if error else text, ikb([ui.nav(chat_id, back=back)]))
+
+
+@router.callback_query(F.data == "hist:ecn")
+async def on_edit_new_category(cb: CallbackQuery, state: FSMContext) -> None:
+    he = await _draft(cb, state)
+    if he is not None:
+        await _ask_new(cb, state, he, None)
+
+
+@router.callback_query(F.data.startswith("hist:ecs:"))
+async def on_edit_new_sub(cb: CallbackQuery, state: FSMContext) -> None:
+    he = await _draft(cb, state)
+    if he is None:
+        return
+    root = record.root_by_id(await _roots(common.chat_id_of(cb), state, he), cb.data.split(":")[2])
+    if root is None:
+        await edit_screen(cb, state)
+        return
+    await _ask_new(cb, state, he, root)
+
+
+@router.message(StateFilter(HistEdit.new_cat))
+async def on_edit_new_name(message: Message, state: FSMContext) -> None:
+    """The name typed for a new category: create it (or take the one already called that) and pick it."""
+    chat_id = common.chat_id_of(message)
+    d = await state.get_data()
+    he = d.get("he")
+    if not isinstance(he, dict):
+        await state.set_state(None)
+        await show_month(message, state, clock.month())
+        return
+    roots = d.get("he_roots") or []
+    parent = record.root_by_id(roots, d.get("he_new"))
+    if d.get("he_new") is not None and parent is None:
+        await edit_screen(message, state)
+        return
+    name = " ".join((message.text or "").split())
+    problem = record.name_problem(chat_id, name) if name else None
+    if not name or problem:
+        await _ask_new(message, state, he, parent, error=problem or "")
+        return
+    if not await common.gate(message):
+        await state.clear()
+        return
+    cat = record.same_name(record.subs(parent) if parent is not None else roots, name)
+    if cat is None:
+        try:
+            cat = await record.create_category(chat_id, name, he.get("type") or "EXPENSE", parent)
+        except api.NeedsLogin:
+            await state.clear()
+            await common.show(message, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+            return
+        except api.ApiError as exc:
+            # "Already exists in this scope" is a name problem: ask for another one.
+            await _ask_new(message, state, he, parent, error=(t(chat_id, "common.serverUnreachable")
+                                                             if isinstance(exc, api.Unreachable) else f"❌ {esc(exc.message)}"))
+            return
+        await state.update_data(he_roots=record.with_category(roots, cat, parent))
+    elif parent is None and record.subs(cat) and cat.get("id") != he.get("origCat"):
+        await _open_root(message, state, he, cat)
+        return
+    await _pick(message, state, he, cat, parent)
 
 
 # Wallet
@@ -982,6 +1113,10 @@ async def on_edit_save(cb: CallbackQuery, state: FSMContext) -> None:
     if he.get("cat") is None:
         await edit_screen(cb, state, error="❌ " + t(chat_id, "history.errCategory"))
         return
+    changed = he.get("cat") != he.get("origCat")
+    if changed and record.subs(record.root_by_id((await state.get_data()).get("he_roots") or [], he["cat"])):
+        await edit_screen(cb, state, error="❌ " + t(chat_id, "record.errSubCategory"))
+        return
     if he.get("split") and float(he.get("cash") or 0) >= float(he.get("amount") or 0):
         await edit_screen(cb, state, error="❌ " + t(chat_id, "history.errSplit", cash=fmt_money(he.get("cash"))))
         return
@@ -996,6 +1131,8 @@ async def on_edit_save(cb: CallbackQuery, state: FSMContext) -> None:
         await edit_screen(cb, state, error=(t(chat_id, "common.serverUnreachable")
                                             if isinstance(exc, api.Unreachable) else f"❌ {esc(exc.message)}"))
         return
+    if changed:  # a sub-category picked in this edit is the one used last under its category
+        pay.remember_child(he.get("catParent"), he.get("cat"))
     await state.set_state(None)
-    await state.update_data(he=None, he_roots=None, he_cards=None)
+    await state.update_data(he=None, he_roots=None, he_cards=None, he_new=None)
     await show_detail(cb, state, str(he["id"]), he.get("origin") or "", notice=t(chat_id, "history.updated"))
