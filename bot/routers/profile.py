@@ -95,10 +95,20 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
         filled = round(pct / 100 * _BAR)
         lines.append(t(chat_id, "profile.progress", bar="▰" * filled + "▱" * (_BAR - filled), percent=int(pct)))
         lines.append(t(chat_id, "profile.nextLevel", n=(level or 0) + 1, amount=fmt_money(n(nxt))))
-    cutoff = (p.get("rule") or {}).get("cutoff")
-    why = _reason(chat_id, (p.get("rule") or {}).get("reason"), cutoff)
+    rule = p.get("rule") if isinstance(p.get("rule"), dict) else {}
+    cutoff = rule.get("cutoff")
+    why = [_reason(chat_id, rule.get("reason"), cutoff)]
+    if rule.get("smallMonthlyLoans"):
+        # Monthly loan payments to people count as "money you owe" only above 10% of the monthly
+        # income (a loan to repay fast always does). Below it, say why they change nothing.
+        limit = rule.get("monthlyLoanLimit")
+        if limit is None and n(p.get("stableIncome")) > 0:
+            limit = n(p.get("stableIncome")) / 10
+        if limit is not None:
+            why.append(t(chat_id, "profile.reason.smallMonthlyLoans", limit=fmt_money(n(limit))))
+    why = [line for line in why if line]
     if why:
-        lines += ["", why]
+        lines += ["", *why]
     nm = p.get("nextMonth")
     if isinstance(nm, dict) and nm.get("month"):
         next_why = _reason(chat_id, nm.get("reason"), cutoff)

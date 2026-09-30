@@ -23,9 +23,16 @@ EN: dict[str, str] = {
     "profile.reason.noDebt": "You pay no loans or debts, so the usual percentages apply.",
     "profile.reason.bankComfortable": "You pay a bank loan and more than {cutoff} is left after bills and loans, so the usual percentages apply.",
     "profile.reason.bankTight": "You pay a bank loan and less than {cutoff} is left after bills and loans, so the rule is lighter.",
-    "profile.reason.debtsComfortable": "You pay back money you owe and more than {cutoff} is left after bills and loans, so the usual percentages apply.",
-    "profile.reason.debtsTight": "You pay back money you owe and less than {cutoff} is left after bills and loans, so the rule is lighter.",
-    "profile.reason.bankAndDebts": "You pay a bank loan and money you owe at the same time, so the rule is lighter.",
+    # "Money you owe" that counts: a loan to repay fast, or monthly loan payments to people that
+    # are together more than 10% of the monthly income.
+    "profile.reason.debtsComfortable": ("You owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — and more than {cutoff} is left "
+                                        "after bills and loans, so the usual percentages apply."),
+    "profile.reason.debtsTight": ("You owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — and less than {cutoff} is left "
+                                  "after bills and loans, so the rule is lighter."),
+    "profile.reason.bankAndDebts": ("You pay a bank loan and also owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — "
+                                    "so the rule is lighter."),
+    "profile.reason.smallMonthlyLoans": ("Your monthly loan payments are under {limit} (10% of your income), "
+                                         "so they don’t lighten the rule."),
     "profile.reason.heavyDebt": "Loan payments take most of what is left after bills, so the rule asks for less until they ease.",
     "profile.reason.custom": "You set these percentages yourself.",
     "profile.reason.noRule": "No percentages are set for your situation, so nothing is asked this month.",
@@ -91,9 +98,15 @@ UZ: dict[str, str] = {
     "profile.reason.noDebt": "Siz kredit yoki qarz toʻlamaysiz, shuning uchun odatdagi foizlar qoʻllanadi.",
     "profile.reason.bankComfortable": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi foizlar qoʻllanadi.",
     "profile.reason.bankTight": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan kamroq qoladi, shuning uchun qoida yengilroq.",
-    "profile.reason.debtsComfortable": "Siz qarzlaringizni qaytarasiz va toʻlovlar hamda qarzlardan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi foizlar qoʻllanadi.",
-    "profile.reason.debtsTight": "Siz qarzlaringizni qaytarasiz va toʻlovlar hamda qarzlardan keyin {cutoff} dan kamroq qoladi, shuning uchun qoida yengilroq.",
-    "profile.reason.bankAndDebts": "Siz bir vaqtda ham bank kreditini, ham qarzlaringizni toʻlaysiz, shuning uchun qoida yengilroq.",
+    "profile.reason.debtsComfortable": ("Sizda hisobga olinadigan qarz bor — tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — va toʻlovlar hamda "
+                                        "qarzlardan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi "
+                                        "foizlar qoʻllanadi."),
+    "profile.reason.debtsTight": ("Sizda hisobga olinadigan qarz bor — tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — va toʻlovlar hamda "
+                                  "qarzlardan keyin {cutoff} dan kamroq qoladi, shuning uchun qoida yengilroq."),
+    "profile.reason.bankAndDebts": ("Siz bank kreditini toʻlaysiz va hisobga olinadigan qarzingiz ham bor — "
+                                    "tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — shuning uchun qoida yengilroq."),
+    "profile.reason.smallMonthlyLoans": ("Oylik qarz toʻlovlaringiz {limit} dan kam (daromadingizning 10%), "
+                                         "shuning uchun ular qoidani yengillashtirmaydi."),
     "profile.reason.heavyDebt": "Kredit va qarz toʻlovlari toʻlovlardan keyin qolgan pulning koʻp qismini oladi, shuning uchun ular kamaymaguncha qoida kamroq soʻraydi.",
     "profile.reason.custom": "Bu foizlarni oʻzingiz belgilagansiz.",
     "profile.reason.noRule": "Sizning holatingiz uchun foizlar belgilanmagan, shuning uchun bu oy hech narsa soʻralmaydi.",
