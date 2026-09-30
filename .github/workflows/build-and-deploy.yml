@@ -58,8 +58,12 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          # `set -e` stops at the first failing step: without it a failed pull was hidden by the
+          # prune that ran after it, the job went green and the server kept the old image.
           script: |
+            set -e
             cd ~/app
             docker compose pull bot
-            docker compose up -d bot
+            docker compose up -d --force-recreate bot
+            docker compose ps bot
             docker image prune -f
