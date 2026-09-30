@@ -1,6 +1,6 @@
 """Paying — and the small forms Savings and Loans & bills are built from.
 
-**Quick pay** (Home's Pay buttons, and every Pay / Add money / Take money out / Got money back on
+**Quick pay** (Home's buttons, and every Pay / Put in / Give / Take out / Got money back on
 Savings and Loans & bills): tap the button, tap the wallet — done, dated today. The endpoints are
 the web's own pay dialogs:
 
@@ -13,7 +13,7 @@ the web's own pay dialogs:
 * investments / the emergency fund — one of the owner's own accounts from GET /finance/investments
   (opening balances included, goals left out, emergency-flagged ones for the emergency fund) via
   POST /finance/investments/{id}/contribute, or the plain fund record POST /emergencies
-* a goal, or any one account ("Add money") — POST /finance/investments/{id}/contribute
+* a goal, or any one investment ("Put in") — POST /finance/investments/{id}/contribute
                                                                    (kinds GOAL, HOLDING)
 * taking money out of an account — POST /finance/investments/{id}/withdraw     (kind OUT)
 
@@ -547,6 +547,8 @@ def _done(chat_id: int, flow: dict, wallet: str | None, noted: str) -> str:
         return t(chat_id, "pay.doneOut", amount=amount, name=noted, wallet=esc(wallet or ""))
     if kind in _SAVING:
         return t(chat_id, "pay.doneNoWallet" if wallet is None else "pay.doneSaved", amount=amount, name=noted)
+    if kind == "DONATION":
+        return t(chat_id, "pay.doneGiven", amount=amount, name=noted)
     return t(chat_id, "pay.done", amount=amount, name=noted)
 
 
@@ -649,14 +651,19 @@ def _field(form: dict, key: str | None) -> Field | None:
 
 
 async def open_form(event, state: FSMContext, spec: str, *, vals: dict | None = None,
-                    ctx: dict | None = None, ret: str = "home", card: bool = False) -> None:
-    """Start a registered form. `card=True` (an edit) opens on the card with `vals` filled in."""
+                    ctx: dict | None = None, ret: str = "home", card: bool = False, ask: str | None = None) -> None:
+    """Start a registered form. `card=True` (an edit) opens on the card with `vals` filled in —
+    or, with `ask`, straight on that one question, the card after it."""
     form = {"spec": spec, "vals": dict(vals or {}), "asked": [], "field": None, "ret": ret,
             "ctx": dict(ctx or {}), "card": card, "opts": [], "err": None, "typing": False}
     if card:
         form["asked"] = [f.key for f in _spec(form).fields(form)]
     await state.set_state(PayForm.pick)
     await state.set_data({"pf": form})
+    first = _field(form, ask) if ask else None
+    if first is not None:
+        await _ask(event, state, form, first)
+        return
     await _next(event, state, form)
 
 

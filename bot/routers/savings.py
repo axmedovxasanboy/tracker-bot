@@ -1,15 +1,22 @@
 """🎯 Savings — the web's Savings page (tracker-frontend pages/Savings.tsx), in the bot.
 
-One screen with this month's savings (Pay / Add more on each row, through `pay.py`) and a line
-per section, then a screen per section:
+One screen with what to set aside this month (Put in / Give on each row, "… more" once it is met,
+through `pay.py`) and a line per section, then a screen per section:
 
-* **Goals** — progress, "{monthly} a month from {Mon}", "by {deadline}", On track / Behind; add,
-  edit, add money, delete. A goal is a savings-goal holding (GET/POST/PUT /finance/investments).
+* **Goals** — Plans, then Wishes, as the advisor lists them (`goals`, with `means` saying whether a
+  normal month has room for the plans). A plan has a monthly payment and money is set aside for
+  it: progress, "{monthly} a month from {Mon}", "by {deadline}", and the server's status (On track
+  / Behind / Doesn't fit your income / Done). A wish stays on the list and asks for nothing. One
+  tap turns one into the other (only `wish` is sent, with the fields an edit echoes anyway, so the
+  monthly payment survives). New, edit, put in, delete. A goal is a savings-goal holding
+  (GET/POST/PUT /finance/investments). A server without `goals` gets the one list and the status
+  worked out here, as before.
 * **Emergency fund** — ONE total over both places it is kept (the plain contributions of
   GET /emergencies and the emergency-flagged holdings), then the entries, newest first.
-* **Investments** — per account "Put in X · now Y · +Z (+P%)"; add, add money, update value
-  ("What changed?" first), take money out, edit, delete.
-* **Donations** — this year's total, the latest entries, add one (amount, wallet, recipient).
+* **Investments** — each one "Put in X · now Y · +Z (+P%)"; new, put in, update value
+  ("What changed?" first), take out, edit, delete.
+* **Donations** — this year's total ("Given"), the latest entries, give one (amount, wallet,
+  recipient).
 
 Figures are the web's: a holding is worth its server `value` (else current value, else what went
 in), growth is `putIn` against that, and a goal's plan is `goalPlan` (components/savings/goalPlan.ts).
@@ -92,30 +99,87 @@ def _start_of(g: dict) -> str:
     return str(g.get("paymentStartDate") or g.get("purchaseDate") or "")[:7]
 
 
-def goal_lines(chat_id: int, g: dict) -> list[str]:
+# ── The advisor's view of the goals (UX-FIXES-SPEC §3.2–3.3) — read here and nowhere else ──
+def advised(data: dict) -> tuple[dict[Any, dict] | None, dict | None]:
+    """(`goals` by id, `means`) from the advisor's answer; (None, None) from a server without them."""
+    goals = data.get("goals") if isinstance(data, dict) else None
+    if not isinstance(goals, list):
+        return None, None
+    means = data.get("means") if isinstance(data.get("means"), dict) else None
+    return {a.get("id"): a for a in goals if isinstance(a, dict)}, means
+
+
+def kind_of(g: dict, a: dict | None = None) -> str | None:
+    """PLAN or WISH — the advisor's `kind`, else the holding's `goalKind`; None on an older server."""
+    kind = (a or {}).get("kind") or g.get("goalKind")
+    return kind if kind in ("PLAN", "WISH") else None
+
+
+def means_line(chat_id: int | None, means: dict | None) -> str | None:
+    """Whether a normal month has room for the plans: said when it does not, or only just."""
+    if not means:
+        return None
+    if means.get("verdict") == "DOES_NOT_FIT":
+        # The room can be nothing, or less than nothing: a month already short before any plan. It is
+        # then said as that — never as a negative amount "left".
+        goals, room = fmt_money(_n(means.get("goals"))), _n(means.get("roomForGoals"))
+        if room >= 1:
+            return t(chat_id, "savings.means.doesNotFit", goals=goals, room=fmt_money(room))
+        if room > -1:
+            return t(chat_id, "savings.means.noRoom", goals=goals)
+        return t(chat_id, "savings.means.short", goals=goals, amount=fmt_money(-room))
+    if means.get("verdict") == "TIGHT" and means.get("paceMonthly") is not None:
+        return t(chat_id, "savings.means.tight", left=fmt_money(_n(means.get("leftToLive"))),
+                 pace=fmt_money(_n(means.get("paceMonthly"))))
+    return None
+
+
+async def _advice(chat_id: int) -> dict:
+    """The advisor's answer for the goals screens; {} when it cannot be read (they then fall back)."""
+    try:
+        return await home.fetch(chat_id)
+    except api.NeedsLogin:
+        raise
+    except Exception:  # noqa: BLE001 — the goals themselves still show
+        return {}
+
+
+def goal_lines(chat_id: int, g: dict, a: dict | None = None) -> list[str]:
+    """One goal. `a` is the advisor's row for it: a wish then shows no monthly line and no status,
+    and a plan's status is the server's. Without it (an older server) the status is worked out here."""
     month = clock.month()
     value, target = value_of(g), g.get("targetAmount")
-    lines = [f"🎯 <b>{esc(g.get('name') or '—')}</b>"]
+    kind = kind_of(g, a)
+    lines = [f"{'💭' if kind == 'WISH' else '🎯'} <b>{esc(g.get('name') or '—')}</b>"]
     if target is not None and _n(target) > 0:
         pct = min(100.0, value / _n(target) * 100)
         done = t(chat_id, "savings.done") if pct >= 100 else f"{math.floor(pct)}%"
         lines.append(t(chat_id, "savings.goal.ofTarget", value=fmt_num(value), target=fmt_money(target)) + f" · {done}")
     else:
         lines.append(fmt_money(value))
-    monthly, start = _n(g.get("monthlyContribution")), _start_of(g)
-    plan = goal_plan(max(0.0, _n(target) - value), monthly, g.get("targetDate"), month, start)
-    parts = []
-    if monthly > 0:
-        parts.append(t(chat_id, "savings.goal.perMonthFrom", amount=fmt_money(monthly),
-                       month=pay.month_label(chat_id, start)) if start > month
-                     else t(chat_id, "savings.goal.perMonth", amount=fmt_money(monthly)))
-    if plan["deadline"]:
-        parts.append(t(chat_id, "savings.goal.by", month=pay.month_label(chat_id, plan["deadline"])))
-    if parts:
-        lines.append(" · ".join(parts))
-    if plan["deadline"] and target is not None and _n(target) > 0 and value < _n(target):
-        lines.append(t(chat_id, "savings.goal.onTrack") if monthly > 0 and not plan["late"]
-                     else t(chat_id, "savings.goal.behind", amount=fmt_money(plan["needed"] or 0)))
+    if kind != "WISH":
+        monthly, start = _n(g.get("monthlyContribution")), _start_of(g)
+        plan = goal_plan(max(0.0, _n(target) - value), monthly, g.get("targetDate"), month, start)
+        parts = []
+        if monthly > 0:
+            parts.append(t(chat_id, "savings.goal.perMonthFrom", amount=fmt_money(monthly),
+                           month=pay.month_label(chat_id, start)) if start > month
+                         else t(chat_id, "savings.goal.perMonth", amount=fmt_money(monthly)))
+        if plan["deadline"]:
+            parts.append(t(chat_id, "savings.goal.by", month=pay.month_label(chat_id, plan["deadline"])))
+        if parts:
+            lines.append(" · ".join(parts))
+        status = (a or {}).get("status")
+        if status == "ON_TRACK":
+            lines.append(t(chat_id, "savings.goal.onTrack"))
+        elif status == "BEHIND":
+            needed = a.get("neededMonthly") if a.get("neededMonthly") is not None else plan["needed"]
+            lines.append(t(chat_id, "savings.goal.behind", amount=fmt_money(_n(needed))))
+        elif status == "DOES_NOT_FIT":
+            lines.append(t(chat_id, "savings.goal.doesNotFit"))
+        elif a is None and plan["deadline"] and target is not None and _n(target) > 0 and value < _n(target):
+            lines.append(t(chat_id, "savings.goal.onTrack") if monthly > 0 and not plan["late"]
+                         else t(chat_id, "savings.goal.behind", amount=fmt_money(plan["needed"] or 0)))
     g_ = growth(g)
     if g.get("currentValue") is not None and abs(g_["growth"]) >= 1:
         lines.append(growth_text(chat_id, g_))
@@ -192,21 +256,24 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
                 if over >= 1:
                     row += " · " + t(chat_id, "savings.month.over", amount=fmt_money(over))
                 lines.append(row)
-                buttons.append((home.clip("➕ " + name), f"pay:m:{r['bucket']}:{ref}:sav"))
+                buttons.append((home.savings_button(chat_id, r, more=True), f"pay:m:{r['bucket']}:{ref}:sav"))
             else:
                 lines.append(t(chat_id, "savings.month.row", name=esc(name), paid=fmt_num(_n(r.get("paid"))),
                                target=fmt_money(total))
                              + home.carried_note(chat_id, r, str(data.get("date") or clock.today_iso())[:7]))
-                buttons.append((home.clip("💳 " + name), f"pay:{r['bucket']}:{ref}:sav"))
+                buttons.append((home.savings_button(chat_id, r), f"pay:{r['bucket']}:{ref}:sav"))
     em_total = sum(_n(e.get("amount")) for e in emergencies) + sum(value_of(i) for i in em_holdings)
     year = clock.today_iso()[:4]
     given = sum(_n(d.get("amount")) for d in donations if str(d.get("donationDate") or "").startswith(year))
+    by_id, _ = advised(data)
+    wishes = sum(1 for g in goals if kind_of(g, (by_id or {}).get(g.get("id"))) == "WISH")
     lines += ["",
-              t(chat_id, "savings.line.goals", count=len(goals)),
+              t(chat_id, "savings.line.goals", count=len(goals)) if by_id is None
+              else t(chat_id, "savings.line.goalKinds", plans=len(goals) - wishes, wishes=wishes),
               t(chat_id, "savings.line.emergency", amount=fmt_money(em_total)),
               t(chat_id, "savings.line.investments", amount=fmt_money(sum(value_of(i) for i in invest))),
               t(chat_id, "savings.line.donations", year=year, amount=fmt_money(given))]
-    kb = ui.grid(buttons, 2)
+    kb = ui.flow(buttons)
     kb += [[(t(chat_id, "savings.btn.goals"), "sav:goals"), (t(chat_id, "savings.btn.emergency"), "sav:em")],
            [(t(chat_id, "savings.btn.investments"), "sav:inv"), (t(chat_id, "savings.btn.donations"), "sav:don")],
            [(t(chat_id, "savings.btn.add"), "sav:add")],
@@ -224,16 +291,36 @@ async def on_goals(cb: CallbackQuery, state: FSMContext) -> None:
 async def show_goals(event: TelegramObject, notice: str | None = None) -> None:
     chat_id = common.chat_id_of(event)
     try:
-        goals, _, _ = _split(await _list(chat_id, "/finance/investments"))
+        holdings, data = await asyncio.gather(_list(chat_id, "/finance/investments"), _advice(chat_id))
     except Exception as exc:  # noqa: BLE001
         await pay.report(event, exc, "sav:goals")
         return
+    goals, _, _ = _split(holdings)
+    by_id, means = advised(data)
     lines = [t(chat_id, "savings.goals.title")]
     if not goals:
         lines += ["", t(chat_id, "savings.goals.empty")]
-    for g in goals:
-        lines += [""] + goal_lines(chat_id, g)
-    kb = ui.grid([(home.clip("🎯 " + str(g.get("name") or "—")), f"sav:g:{g['id']}") for g in goals], 2)
+    elif by_id is None:  # an older server: one list, the status worked out here
+        for g in goals:
+            lines += [""] + goal_lines(chat_id, g)
+    else:
+        rows = [(g, by_id.get(g.get("id"))) for g in goals]
+        plans = [(g, a) for g, a in rows if kind_of(g, a) != "WISH"]
+        wishes = [(g, a) for g, a in rows if kind_of(g, a) == "WISH"]
+        goals = [g for g, _ in plans + wishes]
+        if plans:
+            lines += ["", t(chat_id, "savings.goals.plans")]
+            note = means_line(chat_id, means)
+            if note:
+                lines.append(note)
+            for g, a in plans:
+                lines += [""] + goal_lines(chat_id, g, a or {})
+        if wishes:
+            lines += ["", t(chat_id, "savings.goals.wishes"), t(chat_id, "savings.goals.wishesHint")]
+            for g, a in wishes:
+                lines += [""] + goal_lines(chat_id, g, a or {})
+    kb = ui.grid([(home.clip(("💭 " if kind_of(g, (by_id or {}).get(g.get("id"))) == "WISH" else "🎯 ")
+                             + str(g.get("name") or "—")), f"sav:g:{g['id']}") for g in goals], 2)
     kb += [[(t(chat_id, "savings.btn.addGoal"), "sav:new:goal")], ui.nav(chat_id, back="sav", home=True)]
     await common.show(event, _with_notice(notice, "\n".join(lines)), ikb(kb))
 
@@ -248,17 +335,58 @@ async def on_goal(cb: CallbackQuery, state: FSMContext) -> None:
 async def show_goal(event: TelegramObject, ref: int, notice: str | None = None) -> None:
     chat_id = common.chat_id_of(event)
     try:
-        g = await _holding(chat_id, ref)
+        g, data = await asyncio.gather(_holding(chat_id, ref), _advice(chat_id))
     except Exception as exc:  # noqa: BLE001
         await pay.report(event, exc, f"sav:g:{ref}")
         return
     if g is None or not g.get("savingsGoal"):
         await show_goals(event, notice or t(chat_id, "savings.gone"))
         return
-    kb = [[(t(chat_id, "savings.btn.topUp"), f"sav:top:{ref}")],
-          [(t(chat_id, "savings.btn.edit"), f"sav:eg:{ref}"), (t(chat_id, "savings.btn.delete"), f"sav:del:goal:{ref}")],
-          ui.nav(chat_id, back="sav:goals", home=True)]
-    await common.show(event, _with_notice(notice, "\n".join(goal_lines(chat_id, g))), ikb(kb))
+    by_id, _ = advised(data)
+    a = None if by_id is None else by_id.get(ref) or {}
+    kind = kind_of(g, a)
+    kb = [[(t(chat_id, "savings.btn.topUp"), f"sav:top:{ref}")]]
+    if kind == "PLAN":
+        kb.append([(t(chat_id, "savings.btn.makeWish"), f"sav:wish:{ref}")])
+    elif kind == "WISH":
+        kb.append([(t(chat_id, "savings.btn.makePlan"), f"sav:plan:{ref}")])
+    kb += [[(t(chat_id, "savings.btn.edit"), f"sav:eg:{ref}"), (t(chat_id, "savings.btn.delete"), f"sav:del:goal:{ref}")],
+           ui.nav(chat_id, back="sav:goals", home=True)]
+    await common.show(event, _with_notice(notice, "\n".join(goal_lines(chat_id, g, a))), ikb(kb))
+
+
+@router.callback_query(F.data.startswith("sav:wish:") | F.data.startswith("sav:plan:"))
+async def on_switch_kind(cb: CallbackQuery, state: FSMContext) -> None:
+    """Make it a wish / Make it a plan — one tap. Only `wish` changes: the monthly payment, its start
+    month and the deadline are echoed as they are, so switching back restores the plan. A wish that
+    never had a monthly payment opens the goal form on Plan instead, to ask for one."""
+    chat_id = common.chat_id_of(cb)
+    ref = _id(cb)
+    to_wish = cb.data.startswith("sav:wish:")
+    if ref is None or not await _enter(cb, state):
+        return
+    try:
+        g = await _holding(chat_id, ref)
+    except Exception as exc:  # noqa: BLE001
+        await pay.report(cb, exc, f"sav:g:{ref}")
+        return
+    if g is None or not g.get("savingsGoal"):
+        await show_goals(cb, t(chat_id, "savings.gone"))
+        return
+    monthly = _n(g.get("monthlyContribution"))
+    if not to_wish and monthly <= 0:
+        await pay.open_form(cb, state, "sav.goal", vals=dict(_goal_vals(g), kind="PLAN", monthly=None),
+                            ctx=await _goal_ctx(chat_id, g), ret=f"sav:g:{ref}", card=True, ask="monthly")
+        return
+    await common.begin_write(cb, chat_id)
+    try:
+        await api.request(chat_id, "PUT", f"/finance/investments/{ref}", json=request_from(g, {"wish": to_wish}))
+    except Exception as exc:  # noqa: BLE001
+        await pay.report(cb, exc, f"sav:g:{ref}")
+        return
+    name = esc(g.get("name") or "—")
+    await show_goal(cb, ref, "✅ " + (t(chat_id, "savings.nowWish", name=name) if to_wish
+                                     else t(chat_id, "savings.nowPlan", name=name, amount=fmt_money(monthly))))
 
 
 # ── Emergency fund ──────────────────────────────────────────────────────────
@@ -369,7 +497,7 @@ async def show_holding(event: TelegramObject, ref: int, notice: str | None = Non
 
 @router.callback_query(F.data.startswith("sav:top:"))
 async def on_top_up(cb: CallbackQuery, state: FSMContext) -> None:
-    """Add money to one goal or account: amount → wallet (or "Not from a wallet")."""
+    """Put money into one goal or investment: amount → wallet (or "Not from a wallet")."""
     chat_id = common.chat_id_of(cb)
     ref = _id(cb)
     if ref is None or not await _enter(cb, state):
@@ -412,7 +540,7 @@ async def on_take_out(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("sav:val:"))
 async def on_update_value(cb: CallbackQuery, state: FSMContext) -> None:
-    """"What changed?" — money put in is Add money; only a moved value is set here."""
+    """"What changed?" — money put in is Put in; only a moved value is set here."""
     chat_id = common.chat_id_of(cb)
     ref = _id(cb)
     if ref is None or not await _enter(cb, state):
@@ -503,7 +631,8 @@ async def on_new(cb: CallbackQuery, state: FSMContext) -> None:
     if not await _enter(cb, state):
         return
     if what == "goal":
-        await pay.open_form(cb, state, "sav.goal", vals={"start": pay.shift_month(clock.month(), 1)}, ret="sav:goals")
+        await pay.open_form(cb, state, "sav.goal", vals={"start": pay.shift_month(clock.month(), 1)},
+                            ctx=await _goal_ctx(common.chat_id_of(cb)), ret="sav:goals")
     elif what == "inv":
         await pay.open_form(cb, state, "sav.inv", vals={"date": clock.today_iso()}, ret="sav:inv")
     elif what == "don":
@@ -522,6 +651,23 @@ async def on_edit_investment(cb: CallbackQuery, state: FSMContext) -> None:
     await _edit(cb, state, goal=False)
 
 
+def _goal_vals(i: dict) -> dict:
+    """A goal's answers, as the form holds them."""
+    return {"kind": kind_of(i), "name": i.get("name") or "", "target": i.get("targetAmount"),
+            "monthly": i.get("monthlyContribution") if _n(i.get("monthlyContribution")) > 0 else None,
+            "start": _start_of(i) or None, "deadline": str(i.get("targetDate") or "")[:7] or None}
+
+
+async def _goal_ctx(chat_id: int, i: dict | None = None) -> dict:
+    """What the goal form needs to know: the goal being edited, whether the server knows plans and
+    wishes (`kinds`: it sends `goals`, or this goal's `goalKind`), and `means` for the warning."""
+    by_id, means = advised(await _advice(chat_id))
+    ctx: dict[str, Any] = {"kinds": by_id is not None or (i is not None and kind_of(i) is not None), "means": means}
+    if i is not None:
+        ctx.update(id=i.get("id"), holding=i)
+    return ctx
+
+
 async def _edit(cb: CallbackQuery, state: FSMContext, goal: bool) -> None:
     chat_id = common.chat_id_of(cb)
     ref = _id(cb)
@@ -536,10 +682,7 @@ async def _edit(cb: CallbackQuery, state: FSMContext, goal: bool) -> None:
         await show_savings(cb, t(chat_id, "savings.gone"))
         return
     if goal:
-        vals = {"name": i.get("name") or "", "target": i.get("targetAmount"),
-                "monthly": i.get("monthlyContribution"), "start": _start_of(i) or None,
-                "deadline": str(i.get("targetDate") or "")[:7] or None}
-        await pay.open_form(cb, state, "sav.goal", vals=vals, ctx={"id": ref, "holding": i},
+        await pay.open_form(cb, state, "sav.goal", vals=_goal_vals(i), ctx=await _goal_ctx(chat_id, i),
                             ret=f"sav:g:{ref}", card=True)
     else:
         await pay.open_form(cb, state, "sav.inv", vals={"name": i.get("name") or "", "broker": i.get("broker")},
@@ -652,16 +795,26 @@ def request_from(i: dict, patch: dict) -> dict:
     return body
 
 
-# Goal: name, target, monthly payment (required), payments start, deadline, already have.
+# Goal: a plan or a wish (when the server knows them), name, target; a plan also its monthly payment
+# and when payments start; then the deadline and, for a new one, what is already put by.
+_GOAL_KINDS = (("PLAN", "savings.f.plan"), ("WISH", "savings.f.wish"))
+
+
+def _is_wish(form: dict) -> bool:
+    return bool(form["ctx"].get("kinds")) and form["vals"].get("kind") == "WISH"
+
+
 def _goal_fields(form: dict) -> list[Field]:
-    fields = [
-        Field("name", "savings.f.goalName", "text"),
-        Field("target", "savings.f.target", "amount"),
-        Field("monthly", "savings.f.monthly", "amount"),
-        Field("start", "savings.f.start", "month", walk=False),
-        Field("deadline", "savings.f.deadline", "month", optional=True, min_month=clock.month(),
-              skip_label="savings.f.noDeadline"),
-    ]
+    fields = []
+    if form["ctx"].get("kinds"):
+        fields.append(Field("kind", "savings.f.kind", "choice", options=_GOAL_KINDS, hint="savings.f.kindHint",
+                            per_row=2))
+    fields += [Field("name", "savings.f.goalName", "text"), Field("target", "savings.f.target", "amount")]
+    if not _is_wish(form):
+        fields += [Field("monthly", "savings.f.monthly", "amount"),
+                   Field("start", "savings.f.start", "month", walk=False)]
+    fields.append(Field("deadline", "savings.f.deadline", "month", optional=True, min_month=clock.month(),
+                        skip_label="savings.f.noDeadline"))
     if "id" not in form["ctx"]:
         fields.append(Field("have", "savings.f.have", "amount", optional=True, hint="savings.f.haveHelp"))
     return fields
@@ -674,24 +827,39 @@ def _goal_title(chat_id: int, form: dict) -> str:
 def _goal_lines(chat_id: int, form: dict) -> list[str]:
     v = form["vals"]
     target, monthly = _n(v.get("target")), _n(v.get("monthly"))
+    if _is_wish(form):
+        return [t(chat_id, "savings.f.wishNote")]
     if target <= 0 or monthly <= 0:
         return []
+    lines = []
     held = form["ctx"].get("holding")
     already = value_of(held) if held else _n(v.get("have"))
     plan = goal_plan(max(0.0, target - already), monthly, v.get("deadline"), clock.month(), v.get("start"))
-    if not plan["reach"]:
-        return []
-    key = "savings.f.reachLate" if plan["late"] else "savings.f.reachBy"
-    return [t(chat_id, key, monthly=fmt_money(monthly), month=pay.month_label(chat_id, plan["reach"]),
-              needed=fmt_money(plan["needed"] or 0))]
+    if plan["reach"]:
+        key = "savings.f.reachLate" if plan["late"] else "savings.f.reachBy"
+        lines.append(t(chat_id, key, monthly=fmt_money(monthly), month=pay.month_label(chat_id, plan["reach"]),
+                       needed=fmt_money(plan["needed"] or 0)))
+    # Before saving: would the plans then ask more than a normal month has room for?
+    means = form["ctx"].get("means")
+    if means and means.get("goals") is not None and means.get("roomForGoals") is not None:
+        counted = _n(held.get("monthlyContribution")) if held and kind_of(held) == "PLAN" else 0.0
+        # A month with no room at all (or already short) has room for none of it.
+        over = _n(means["goals"]) - counted + monthly - max(0.0, _n(means["roomForGoals"]))
+        if over >= 1:
+            lines.append(t(chat_id, "savings.f.overMeans", amount=fmt_money(over)))
+    return lines
 
 
 async def _goal_save(event: TelegramObject, chat_id: int, form: dict) -> tuple[str, str | None]:
     v = form["vals"]
     name = str(v["name"]).strip()
-    patch = {"name": name, "targetAmount": v["target"], "monthlyContribution": v["monthly"],
-             "targetDate": pay.last_day(v["deadline"]) if v.get("deadline") else None,
-             "paymentStartDate": f"{v.get('start') or pay.shift_month(clock.month(), 1)}-01"}
+    patch: dict[str, Any] = {"name": name, "targetAmount": v["target"],
+                             "targetDate": pay.last_day(v["deadline"]) if v.get("deadline") else None}
+    if form["ctx"].get("kinds"):
+        patch["wish"] = _is_wish(form)
+    if not _is_wish(form):  # a wish keeps whatever monthly payment it had: becoming a plan again restores it
+        patch.update(monthlyContribution=v["monthly"],
+                     paymentStartDate=f"{v.get('start') or pay.shift_month(clock.month(), 1)}-01")
     if "id" in form["ctx"]:
         ref = form["ctx"]["id"]
         await api.request(chat_id, "PUT", f"/finance/investments/{ref}", json=request_from(form["ctx"]["holding"], patch))
@@ -708,7 +876,7 @@ pay.FORMS["sav.goal"] = Spec(title=_goal_title, fields=_goal_fields, save=_goal_
 
 
 # Investment: name, amount, from wallet or "I already own it", date. An edit changes the name
-# and the broker only — money goes in with Add money, a new value with Update value.
+# and the broker only — money goes in with Put in, a new value with Update value.
 def _inv_fields(form: dict) -> list[Field]:
     if "id" in form["ctx"]:
         return [Field("name", "savings.f.invName", "text"),
@@ -765,7 +933,7 @@ async def _don_save(event: TelegramObject, chat_id: int, form: dict) -> tuple[st
 
 
 pay.FORMS["sav.don"] = Spec(title=lambda chat_id, form: t(chat_id, "savings.f.addDon"),
-                            fields=_don_fields, save=_don_save, submit="pay.f.add")
+                            fields=_don_fields, save=_don_save, submit="savings.f.give")
 
 
 # Update value: the new total, with the growth it means shown before saving.

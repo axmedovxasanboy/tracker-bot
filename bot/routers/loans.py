@@ -1,17 +1,17 @@
 """💳 Loans & bills — the web's Loans page (tracker-frontend pages/Loans.tsx), in the bot.
 
-The page, top to bottom: what leaves every month (bills + loans on a monthly plan), "You owe
-(repay fast)" and "Owed to you"; then Monthly bills (✓ Paid or Pay), Loans you pay monthly (bank
-loans + MONTHLY borrowed money, next date, left to repay), Repay as fast as possible (ASAP borrowed
-money + debts: "All due now" / "34% this month: X"), Owed to you ("Got money back"), and the people
-lists ("You borrowed most from" / "Borrowed most from you", top 5). Every record opens on its own
-screen: Pay, Edit, Pause/Resume (bills), History, Delete.
+The page, top to bottom: what leaves every month (bills + loans on a monthly plan), "Left to
+repay" and "Owed to you" — the advisor's `owe`, which also names the loans it cannot count because
+the amount left is not known (said, never dropped); then Monthly bills (✓ Paid or Pay), Loans you
+pay monthly (bank loans + MONTHLY borrowed money, next date, left to repay), Repay as fast as
+possible (ASAP borrowed money + debts: "All due now" / "Due this month: X"), Owed to you ("Got
+money back"), and the people lists ("You borrowed most from" / "Borrowed most from you", top 5).
+Every record opens on its own screen: Pay, Edit, Pause/Resume (bills), History, Delete.
 
-Figures follow the web exactly (ALLOCATION-EXPLAINED §6): a MONTHLY loan asks its plan (else 34 % of
-the original), capped at what is left; an ASAP loan or a debt asks all of what is left once that
-is ≤ 70 % of the monthly income, else 34 % of what is left — and where the advisor already dates
-this month's ask (`daily.upcoming`), its figure wins, because it knows what this month has paid.
-A bill is paid this month when the advisor no longer lists it among the month's bills.
+What a loan asks this month is the server's figure, never a percentage worked out here: the
+advisor's `daily.upcoming` row for it (it knows what this month has already paid), and for a loan
+on a monthly plan the plan itself. With no such row nothing is quoted, and paying starts on what is
+left. A bill is paid this month when the advisor no longer lists it among the month's bills.
 
 Callbacks owned here: `loan` and `loan:*`.
 """
@@ -36,8 +36,6 @@ router = Router(name="loans")
 
 # BOT-A's "☰ More" menu, where Loans & bills is opened from.
 MORE = "more"
-_SHARE = 0.34     # of what is left, each month, on money repaid as fast as possible
-_ALL_DUE = 0.7    # at or below this share of the monthly income, all that is left is due now
 _EPS = 0.5
 _MAX_PAY = 6
 _HISTORY = 20
@@ -87,9 +85,8 @@ async def _load(chat_id: int) -> dict[str, Any]:
         _list(chat_id, "/finance/loans-given"), home.fetch(chat_id),
         api.request(chat_id, "GET", "/settings"), _month_tx(chat_id, month))
     settings = settings if isinstance(settings, dict) else {}
-    income = _n(settings.get("monthlyStableIncome")) or None
     d = {"month": month, "today": clock.today_iso(), "bills": bills, "banks": banks, "taken": taken,
-         "debts": debts, "given": given, "adv": adv, "settings": settings, "income": income, "txs": txs}
+         "debts": debts, "given": given, "adv": adv, "settings": settings, "txs": txs}
     d["due"] = _next_due(adv)
     d["billRows"] = _bill_rows(d)
     d["obligations"] = _obligations(d)
@@ -108,19 +105,11 @@ def repayment_of(loan: dict) -> str:
     return "MONTHLY" if _n(loan.get("plannedMonthlyPayment")) > 0 else "ASAP"
 
 
-def taken_monthly(loan: dict) -> float:
+def taken_monthly(loan: dict) -> float | None:
+    """A monthly loan's plan, capped at what is left; None when it has no plan."""
     left = max(0.0, _n(loan.get("remainingAmount")))
-    if left <= 0:
-        return 0.0
     plan = _n(loan.get("plannedMonthlyPayment"))
-    return min(plan if plan > 0 else _n(loan.get("totalAmount")) * _SHARE, left)
-
-
-def asap_due(left: float, income: float | None) -> tuple[float, bool]:
-    """All of what is left once it is ≤ 70 % of the monthly income, else 34 % of it."""
-    rest = max(0.0, left)
-    all_now = bool(income) and rest <= income * _ALL_DUE
-    return round(rest if all_now else rest * _SHARE), all_now
+    return min(plan, left) if plan > 0 and left > 0 else None
 
 
 def _next_due(adv: dict) -> dict[tuple[str, Any], dict]:
@@ -183,7 +172,7 @@ def _bank_paid(running: list[dict], payments: list[dict]) -> dict[Any, float]:
 
 def _obligations(d: dict) -> list[dict]:
     """Bank loans, borrowed money and debts — what a month costs, what is left, when next."""
-    month, income = d["month"], d["income"]
+    month = d["month"]
     repaid_taken: dict[Any, float] = {}
     repaid_debt: dict[Any, float] = {}
     bank_payments = []
@@ -214,11 +203,18 @@ def _obligations(d: dict) -> list[dict]:
                     "paidOff": paid_off, "paidThisMonth": paid_now, "asap": False,
                     "next": None if paid_off else {"month": nxt, "first": not_started}})
 
-    def personal(kind: str, r: dict, name: str, monthly: float, paid_so_far: float, asap: bool) -> dict:
+    def personal(kind: str, r: dict, name: str, plan: float | None, paid_so_far: float, asap: bool) -> dict:
+        """`plan` is a monthly loan's own payment. Anything else this month is the advisor's ask
+        (`d["due"]`, the still-unpaid `daily.upcoming` row); with neither, nothing is quoted."""
         paid_off = r.get("status") == "PAID" or _n(r.get("remainingAmount")) <= _EPS
         start = _ym(r.get("paymentStartDate"))
         not_started = bool(start) and start > month
-        paid_now = not paid_off and not not_started and monthly > 0 and paid_so_far >= monthly - _EPS
+        due = d["due"].get((_UPCOMING[kind], r.get("id")))
+        monthly = plan if plan is not None else _n(due.get("amount")) if due else None
+        if plan is not None:
+            paid_now = not paid_off and not not_started and paid_so_far >= plan - _EPS
+        else:  # paid for the month once something went in and the advisor asks for no more
+            paid_now = not paid_off and not not_started and due is None and paid_so_far > 0
         nxt = None if paid_off else {"month": start, "first": True} if not_started else \
             {"month": pay.shift_month(month, 1) if paid_now else month, "first": False}
         return {"kind": kind, "id": r.get("id"), "record": r, "name": name,
@@ -228,23 +224,38 @@ def _obligations(d: dict) -> list[dict]:
 
     for loan in d["taken"]:
         asap = repayment_of(loan) == "ASAP"
-        monthly = asap_due(_n(loan.get("remainingAmount")), income)[0] if asap else taken_monthly(loan)
-        out.append(personal("taken", loan, str(loan.get("lenderName") or "—"), monthly,
-                            repaid_taken.get(loan.get("id"), 0.0), asap))
+        out.append(personal("taken", loan, str(loan.get("lenderName") or "—"),
+                            None if asap else taken_monthly(loan), repaid_taken.get(loan.get("id"), 0.0), asap))
     for debt in d["debts"]:  # every debt is repaid as fast as possible
-        out.append(personal("debt", debt, str(debt.get("creditorName") or "—"),
-                            asap_due(_n(debt.get("remainingAmount")), income)[0],
+        out.append(personal("debt", debt, str(debt.get("creditorName") or "—"), None,
                             repaid_debt.get(debt.get("id"), 0.0), True))
     return sorted(out, key=lambda o: ((o["next"] or {}).get("month") or "9999-99", o["name"]))
 
 
-def _asap_now(d: dict, o: dict) -> tuple[float, bool]:
-    """This month's ask on a fast-repaid loan: the advisor's, when it dates one; else the rule."""
+def _asap_now(d: dict, o: dict) -> tuple[float | None, bool]:
+    """This month's ask on a fast-repaid loan — the advisor's (`daily.upcoming`), and whether it is
+    all that is left. (None, False) when the advisor dates none: nothing is quoted then."""
     left = o["remaining"] or 0.0
     due = d["due"].get((_UPCOMING[o["kind"]], o["id"]))
-    if due is not None:
-        return _n(due.get("amount")), _n(due.get("amount")) >= left - _EPS
-    return asap_due(left, d["income"])
+    if due is None:
+        return None, False
+    return _n(due.get("amount")), _n(due.get("amount")) >= left - _EPS
+
+
+def owe_of(d: dict) -> dict[str, Any]:
+    """The header: left to repay, the part of it to repay fast, owed to the owner, and the loans
+    left out because what is left of them is not known. The advisor's `owe` (UX-FIXES-SPEC §3.4);
+    a server without it gets the same four from the records on this page."""
+    owe = d["adv"].get("owe")
+    if isinstance(owe, dict):
+        return {"left": _n(owe.get("leftToRepay")), "fast": _n(owe.get("toRepayFast")),
+                "owed": _n(owe.get("owedToYou")),
+                "names": [str(x.get("name") or "—") for x in owe.get("notCounted") or [] if isinstance(x, dict)]}
+    active = [o for o in d["obligations"] if not o["paidOff"]]
+    return {"left": sum(o["remaining"] for o in active if o["remaining"] is not None),
+            "fast": sum(o["remaining"] or 0 for o in active if o["asap"]),
+            "owed": sum(_n(r.get("pendingAmount")) for r in d["given"] if not _owed_done(r)),
+            "names": [o["name"] for o in active if o["remaining"] is None]}
 
 
 def _owed_done(r: dict) -> bool:
@@ -320,8 +331,9 @@ def _asap_line(chat_id: int, d: dict, o: dict) -> str:
         return " · ".join([head, t(chat_id, "loans.paidOff"),
                            t(chat_id, "loans.total", amount=fmt_money(_n(o["record"].get("totalAmount"))))])
     amount, all_now = _asap_now(d, o)
-    parts = [head, t(chat_id, "loans.leftToRepay", amount=fmt_money(o["remaining"] or 0)),
-             t(chat_id, "loans.allDueNow") if all_now else t(chat_id, "loans.dueThisMonth", amount=fmt_money(amount))]
+    parts = [head, t(chat_id, "loans.leftToRepay", amount=fmt_money(o["remaining"] or 0))]
+    if amount is not None:
+        parts.append(t(chat_id, "loans.allDueNow") if all_now else t(chat_id, "loans.dueThisMonth", amount=fmt_money(amount)))
     due = d["due"].get((_UPCOMING[o["kind"]], o["id"]))
     if due and due.get("overdue"):
         parts.append(t(chat_id, "loans.overdue"))
@@ -377,11 +389,16 @@ async def show_loans(event: TelegramObject, notice: str | None = None) -> None:
     waiting = [r for r in d["given"] if not _owed_done(r)]
     bills_monthly = sum(_n(m.get("amount")) for m in d["bills"] if m.get("active", True))
     loans_monthly = sum(o["monthly"] or 0 for o in active_mon)
+    owe = owe_of(d)
     lines = [t(chat_id, "loans.title"), "",
              t(chat_id, "loans.everyMonth", amount=fmt_money(bills_monthly + loans_monthly)),
              t(chat_id, "loans.everyMonthSplit", bills=fmt_money(bills_monthly), loans=fmt_money(loans_monthly)),
-             t(chat_id, "loans.youOwe", amount=fmt_money(sum(o["remaining"] or 0 for o in active_asap))),
-             t(chat_id, "loans.owedToYou", amount=fmt_money(sum(_n(r.get("pendingAmount")) for r in waiting)))]
+             t(chat_id, "loans.leftToRepayTotal", amount=fmt_money(owe["left"]))]
+    if owe["fast"] > 0:
+        lines.append(t(chat_id, "loans.toRepayFast", amount=fmt_money(owe["fast"])))
+    if owe["names"]:  # never dropped silently: a loan whose amount left is unknown is named
+        lines.append(t(chat_id, "loans.notCounted", names=esc(", ".join(owe["names"]))))
+    lines.append(t(chat_id, "loans.owedToYou", amount=fmt_money(owe["owed"])))
     if d["adv"].get("missingStableIncome"):
         lines += ["", t(chat_id, "loans.noIncome")]
 
@@ -589,13 +606,15 @@ async def on_pay(cb: CallbackQuery, state: FSMContext) -> None:
         if o is None or o["paidOff"]:
             await back_with(cb, ret, t(chat_id, "pay.gone"))
             return
-        amount = _asap_now(d, o)[0] if o["asap"] else (o["monthly"] or 0.0)
+        # This month's amount is the advisor's (`daily.upcoming`), else the loan's own monthly plan —
+        # never a percentage worked out here. With neither, a personal loan starts on what is left.
+        due = d["due"].get((_UPCOMING[kind], ref))
+        amount = _n(due.get("amount")) if due is not None else (o["monthly"] or 0.0)
         flow.update(name=o["name"], amount=amount if amount > 0 else None)
         if kind != "bank":
             left = o["remaining"] or 0.0
             flow.update(max=left, quick=[[t(chat_id, "loans.full", amount=fmt_money(left)), left]])
-            if flow["amount"] is not None:
-                flow["amount"] = min(flow["amount"], left)
+            flow["amount"] = min(flow["amount"], left) if flow["amount"] is not None else (left or None)
     await pay.start_quick(cb, state, flow, d["adv"])
 
 
@@ -762,7 +781,6 @@ async def on_add(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("loan:add:"))
 async def on_add_kind(cb: CallbackQuery, state: FSMContext) -> None:
-    chat_id = common.chat_id_of(cb)
     what = cb.data.split(":", 2)[2]
     if not await _enter(cb, state):
         return
@@ -772,14 +790,8 @@ async def on_add_kind(cb: CallbackQuery, state: FSMContext) -> None:
     elif what == "bank":
         await pay.open_form(cb, state, "loan.bank", ret="loan:s:mon")
     elif what in ("borrowed", "lent"):
-        try:
-            settings = await api.request(chat_id, "GET", "/settings") or {}
-        except Exception as exc:  # noqa: BLE001
-            await pay.report(cb, exc, "loan")
-            return
-        income = _n(settings.get("monthlyStableIncome")) if isinstance(settings, dict) else 0.0
         vals = {"date": today, "first": pay.shift_month(clock.month(), 1)} if what == "borrowed" else {"date": today}
-        await pay.open_form(cb, state, f"loan.{what}", vals=vals, ctx={"income": income or None},
+        await pay.open_form(cb, state, f"loan.{what}", vals=vals,
                             ret="loan" if what == "borrowed" else "loan:s:owed")
     else:
         await show_loans(cb)
@@ -802,7 +814,7 @@ async def on_edit(cb: CallbackQuery, state: FSMContext) -> None:
     if r is None:
         await show_loans(cb, t(chat_id, "loans.gone"))
         return
-    ctx: dict[str, Any] = {"id": ref, "record": r, "income": d["income"]}
+    ctx: dict[str, Any] = {"id": ref, "record": r}
     if kind == "bill":
         row = next(x for x in d["billRows"] if x["record"] is r)
         ctx["paid"] = row["paid"]
@@ -994,9 +1006,7 @@ def _borrowed_fields(form: dict) -> list[Field]:
 def _borrowed_lines(chat_id: int, form: dict) -> list[str]:
     lines = _wallet_lines(chat_id, form)
     if form["vals"].get("repay") == "ASAP":
-        income = form["ctx"].get("income")
-        lines.append(t(chat_id, "loans.f.asapRule", limit=fmt_money(round(income * _ALL_DUE))) if income
-                     else t(chat_id, "loans.f.asapRuleNoIncome"))
+        lines.append(t(chat_id, "loans.f.asapRule"))
     return lines
 
 

@@ -1,4 +1,5 @@
-"""👤 Profile: the level, the savings rule, what to set aside, this month so far, how it's worked out.
+"""👤 Profile: one sentence, the level, the savings rule, what to set aside, the month so far
+("Pay for {month}", "Set aside so far" = Saved + Given), and how it's worked out — last.
 
 `profile.*`
 
@@ -11,29 +12,25 @@ EN: dict[str, str] = {
     "profile.outdated": "Update the server to see your profile.",
     "profile.incomeTitle": "⚠️ <b>Tell Tracker your monthly pay first.</b>",
     "profile.incomeUnset": "Your level and savings rule are worked out from it. Set it in Settings.",
+    "profile.lead": "This month: set aside <b>{total}</b> — {percent}% of {base}.",
+    "profile.leadShort": "This month: set aside <b>{total}</b>.",
 
-    "profile.levelLabel": "<b>Your level</b>",
     "profile.level": "🏅 <b>Level {n}</b>",
     "profile.noLevel": "🏅 <b>No level yet</b>",
     "profile.leftAfterBills": "{amount} a month left after bills",
-    "profile.progress": "{bar} {percent}%",
     "profile.nextLevel": "Level {n} at {amount}",
     "profile.topLevel": "This is the top level.",
     "profile.aboveCeiling": "You’re above the highest level.",
-    "profile.reason.noDebt": "You pay no loans or debts, so the usual percentages apply.",
-    "profile.reason.bankComfortable": "You pay a bank loan and more than {cutoff} is left after bills and loans, so the usual percentages apply.",
-    "profile.reason.bankTight": "You pay a bank loan and less than {cutoff} is left after bills and loans, so the rule is lighter.",
+    "profile.reason.noDebt": "You pay no loans or debts, so the usual percentages are asked.",
+    "profile.reason.bankComfortable": "You pay a bank loan and more than {cutoff} is left after bills and loans, so the usual percentages are asked.",
+    "profile.reason.bankTight": "Because you pay a bank loan and under {cutoff} is left after bills and loans, less is asked.",
     # "Money you owe" that counts: a loan to repay fast, or monthly loan payments to people that
     # are together more than 10% of the monthly income.
-    "profile.reason.debtsComfortable": ("You owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — and more than {cutoff} is left "
-                                        "after bills and loans, so the usual percentages apply."),
-    "profile.reason.debtsTight": ("You owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — and less than {cutoff} is left "
-                                  "after bills and loans, so the rule is lighter."),
-    "profile.reason.bankAndDebts": ("You pay a bank loan and also owe money that counts — a loan to repay fast, or monthly loan payments above 10% of your income — "
-                                    "so the rule is lighter."),
-    "profile.reason.smallMonthlyLoans": ("Your monthly loan payments are under {limit} (10% of your income), "
-                                         "so they don’t lighten the rule."),
-    "profile.reason.heavyDebt": "Loan payments take most of what is left after bills, so the rule asks for less until they ease.",
+    "profile.reason.debtsComfortable": "You repay a loan fast, or your monthly loan payments are above 10% of your income, and more than {cutoff} is left after bills and loans, so the usual percentages are asked.",
+    "profile.reason.debtsTight": "Because you repay a loan fast, or your monthly loan payments are above 10% of your income, and under {cutoff} is left after bills and loans, less is asked.",
+    "profile.reason.bankAndDebts": "Because you pay a bank loan and also repay a loan fast — or your monthly loan payments are above 10% of your income — less is asked.",
+    "profile.reason.smallMonthlyLoans": "Your monthly loan payments are under {limit} (10% of your income), so they don’t reduce what is asked.",
+    "profile.reason.heavyDebt": "Loan payments take most of what is left after bills, so less is asked until they ease.",
     "profile.reason.custom": "You set these percentages yourself.",
     "profile.reason.noRule": "No percentages are set for your situation, so nothing is asked this month.",
     "profile.fromMonth": "📅 From {month}: {percents} — {reason}",
@@ -51,15 +48,16 @@ EN: dict[str, str] = {
     "profile.withoutBonus": "In a month without a bonus: {amount}",
 
     "profile.soFar": "<b>{month} so far</b>",
-    "profile.incomeThisMonth": "Income this month: <b>{amount}</b>",
+    "profile.payFor": "Pay for {month}: <b>{amount}</b>",
     "profile.noIncomeYet": "No income recorded yet.",
     "profile.incomeRow": "• {name} · {amount}",
-    "profile.setAsideSoFar": "Set aside this month: <b>{amount}</b>",
-    "profile.ofBase": "= {percent}% of your monthly income + bonus",
+    "profile.setAsideSoFar": "Set aside so far: <b>{amount}</b>",
+    "profile.savedGiven": "Saved {saved} · Given {given}",
+    "profile.given": "Given",
     "profile.ofIncome": "{percent}% of your income",
     "profile.allocRow": "• {name} · <b>{amount}</b> · {share}",
     "profile.ofTarget": "of {amount}",
-    "profile.overAdvice": "+{amount} over the advice",
+    "profile.overAdvice": "+{amount} more than asked",
     "profile.goals": "Goals",
 
     "profile.howTitle": "<b>How it is worked out</b>",
@@ -69,13 +67,13 @@ EN: dict[str, str] = {
     "profile.afterBills": "Left after bills",
     "profile.levelResult": "→ Level {n}",
     "profile.levelResultNext": "→ Level {n} (Level {next} at {amount})",
-    "profile.baseLadder": "<i>Your savings base</i>",
+    "profile.baseLadder": "<i>What the percentages apply to</i>",
     "profile.incomeFromSettings": "Monthly income (from Settings)",
     "profile.salaryNote": "<i>Recording your salary doesn’t change these targets — only a bonus does.</i>",
     "profile.loanPayments": "Loan payments",
     "profile.forSavings": "Left for savings",
     "profile.bonus": "Bonus this month",
-    "profile.base": "Savings base",
+    "profile.base": "The percentages apply to",
     "profile.rung": "{sign} {label}: {amount}",
 
     "profile.changeIncomeBtn": "💰 Change income",
@@ -86,28 +84,23 @@ UZ: dict[str, str] = {
     "profile.outdated": "Profilingizni koʻrish uchun serverni yangilang.",
     "profile.incomeTitle": "⚠️ <b>Avval oylik daromadingizni kiriting.</b>",
     "profile.incomeUnset": "Darajangiz va jamgʻarma qoidangiz shundan hisoblanadi. Uni Sozlamalarda kiriting.",
+    "profile.lead": "Shu oy: <b>{total}</b> ajratildi — {base} ning {percent}%.",
+    "profile.leadShort": "Shu oy: <b>{total}</b> ajratildi.",
 
-    "profile.levelLabel": "<b>Darajangiz</b>",
     "profile.level": "🏅 <b>{n}-daraja</b>",
     "profile.noLevel": "🏅 <b>Hali daraja yoʻq</b>",
     "profile.leftAfterBills": "Toʻlovlardan keyin oyiga {amount} qoladi",
-    "profile.progress": "{bar} {percent}%",
     "profile.nextLevel": "{n}-daraja: {amount} dan",
     "profile.topLevel": "Bu eng yuqori daraja.",
     "profile.aboveCeiling": "Siz eng yuqori darajadan ham yuqoridasiz.",
-    "profile.reason.noDebt": "Siz kredit yoki qarz toʻlamaysiz, shuning uchun odatdagi foizlar qoʻllanadi.",
-    "profile.reason.bankComfortable": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi foizlar qoʻllanadi.",
-    "profile.reason.bankTight": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan kamroq qoladi, shuning uchun qoida yengilroq.",
-    "profile.reason.debtsComfortable": ("Sizda hisobga olinadigan qarz bor — tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — va toʻlovlar hamda "
-                                        "qarzlardan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi "
-                                        "foizlar qoʻllanadi."),
-    "profile.reason.debtsTight": ("Sizda hisobga olinadigan qarz bor — tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — va toʻlovlar hamda "
-                                  "qarzlardan keyin {cutoff} dan kamroq qoladi, shuning uchun qoida yengilroq."),
-    "profile.reason.bankAndDebts": ("Siz bank kreditini toʻlaysiz va hisobga olinadigan qarzingiz ham bor — "
-                                    "tez qaytariladigan qarz yoki daromadingizning 10% dan oshadigan oylik qarz toʻlovlari — shuning uchun qoida yengilroq."),
-    "profile.reason.smallMonthlyLoans": ("Oylik qarz toʻlovlaringiz {limit} dan kam (daromadingizning 10%), "
-                                         "shuning uchun ular qoidani yengillashtirmaydi."),
-    "profile.reason.heavyDebt": "Kredit va qarz toʻlovlari toʻlovlardan keyin qolgan pulning koʻp qismini oladi, shuning uchun ular kamaymaguncha qoida kamroq soʻraydi.",
+    "profile.reason.noDebt": "Siz kredit yoki qarz toʻlamaysiz, shuning uchun odatdagi foizlar soʻraladi.",
+    "profile.reason.bankComfortable": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan koʻproq qoladi, shuning uchun odatdagi foizlar soʻraladi.",
+    "profile.reason.bankTight": "Siz bank kreditini toʻlaysiz va toʻlovlar hamda kreditdan keyin {cutoff} dan kam qoladi, shuning uchun kamroq soʻraladi.",
+    "profile.reason.debtsComfortable": "Siz qarzni tez qaytaryapsiz yoki oylik qarz toʻlovlaringiz daromadingizning 10% dan oshadi, toʻlovlar hamda qarzlardan keyin esa {cutoff} dan koʻproq qoladi, shuning uchun odatdagi foizlar soʻraladi.",
+    "profile.reason.debtsTight": "Siz qarzni tez qaytaryapsiz yoki oylik qarz toʻlovlaringiz daromadingizning 10% dan oshadi, toʻlovlar hamda qarzlardan keyin esa {cutoff} dan kam qoladi, shuning uchun kamroq soʻraladi.",
+    "profile.reason.bankAndDebts": "Siz bank kreditini toʻlaysiz, shu bilan birga qarzni tez qaytaryapsiz yoki oylik qarz toʻlovlaringiz daromadingizning 10% dan oshadi, shuning uchun kamroq soʻraladi.",
+    "profile.reason.smallMonthlyLoans": "Oylik qarz toʻlovlaringiz {limit} dan kam (daromadingizning 10%), shuning uchun ular soʻraladigan miqdorni kamaytirmaydi.",
+    "profile.reason.heavyDebt": "Kredit va qarz toʻlovlari toʻlovlardan keyin qolgan pulning koʻp qismini oladi, shuning uchun ular kamaymaguncha kamroq soʻraladi.",
     "profile.reason.custom": "Bu foizlarni oʻzingiz belgilagansiz.",
     "profile.reason.noRule": "Sizning holatingiz uchun foizlar belgilanmagan, shuning uchun bu oy hech narsa soʻralmaydi.",
     "profile.fromMonth": "📅 {month} dan: {percents} — {reason}",
@@ -125,15 +118,16 @@ UZ: dict[str, str] = {
     "profile.withoutBonus": "Bonussiz oyda: {amount}",
 
     "profile.soFar": "<b>{month}: hozirgacha</b>",
-    "profile.incomeThisMonth": "Shu oydagi daromad: <b>{amount}</b>",
+    "profile.payFor": "{month} uchun maosh: <b>{amount}</b>",
     "profile.noIncomeYet": "Hali daromad yozilmagan.",
     "profile.incomeRow": "• {name} · {amount}",
-    "profile.setAsideSoFar": "Shu oy ajratilgan: <b>{amount}</b>",
-    "profile.ofBase": "= oylik daromadingiz va bonusingizning {percent}%",
+    "profile.setAsideSoFar": "Hozirgacha ajratildi: <b>{amount}</b>",
+    "profile.savedGiven": "Jamgʻarildi {saved} · Xayriya {given}",
+    "profile.given": "Xayriya",
     "profile.ofIncome": "daromadingizning {percent}%",
     "profile.allocRow": "• {name} · <b>{amount}</b> · {share}",
     "profile.ofTarget": "{amount} dan",
-    "profile.overAdvice": "+{amount} tavsiyadan ortiq",
+    "profile.overAdvice": "soʻralganidan +{amount} koʻp",
     "profile.goals": "Maqsadlar",
 
     "profile.howTitle": "<b>Qanday hisoblanadi</b>",
@@ -143,13 +137,13 @@ UZ: dict[str, str] = {
     "profile.afterBills": "Toʻlovlardan keyin qoladi",
     "profile.levelResult": "→ {n}-daraja",
     "profile.levelResultNext": "→ {n}-daraja ({next}-daraja: {amount} dan)",
-    "profile.baseLadder": "<i>Jamgʻarma asosingiz</i>",
+    "profile.baseLadder": "<i>Foizlar nimaga qoʻllanadi</i>",
     "profile.incomeFromSettings": "Oylik daromad (Sozlamalardan)",
     "profile.salaryNote": "<i>Maoshni yozish bu maqsadlarni oʻzgartirmaydi — faqat bonus oʻzgartiradi.</i>",
     "profile.loanPayments": "Kredit va qarz toʻlovlari",
     "profile.forSavings": "Jamgʻarma uchun qoladi",
     "profile.bonus": "Shu oydagi bonus",
-    "profile.base": "Jamgʻarma asosi",
+    "profile.base": "Foizlar qoʻllanadigan summa",
     "profile.rung": "{sign} {label}: {amount}",
 
     "profile.changeIncomeBtn": "💰 Daromadni oʻzgartirish",

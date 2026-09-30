@@ -3,8 +3,10 @@
 **Quick add is the main way to record.** A message that starts with an amount becomes a draft
 with everything filled in, and one tap on Save books it:
 
-* the type — expense, unless it starts with `+`, or a word says income (salary, maosh, avans,
-  bonus…); a leading `-` always means expense;
+* the type — expense whenever it is not given. It is given by a leading `+` (income) or `-`
+  (expense), or by a word that names income (salary, maosh, avans, bonus…). Nothing remembered
+  ever turns an entry into income: a word saved with an income before only suggests its category
+  again once the entry is income anyway;
 * the category — from keywords (EN, UZ and common transliterations) mapped onto the owner's own
   categories by name; failing that, the category last saved with one of the words; failing that,
   none, and the card shows a row of category buttons;
@@ -136,12 +138,14 @@ def guess(note: str, sign: str | None) -> tuple[str, str | None, int | None]:
         hit = _keyword(w)
         if hit and (sign is None or sign == hit[0]):
             return hit[0], hit[1], None
+    # The type is not given: Expense. A remembered word suggests its category only for that type.
+    typ = sign or "EXPENSE"
     memory = storage.pref("words") or {}
     for w in found:
         hit = memory.get(w)
-        if isinstance(hit, list) and len(hit) == 2 and (sign is None or sign == hit[1]):
-            return str(hit[1]), None, hit[0]
-    return sign or "EXPENSE", None, None
+        if isinstance(hit, list) and len(hit) == 2 and hit[1] == typ:
+            return typ, None, hit[0]
+    return typ, None, None
 
 
 def _norm(name) -> str:

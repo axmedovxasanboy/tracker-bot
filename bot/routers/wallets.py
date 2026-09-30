@@ -1,22 +1,24 @@
 """👛 Wallets — the web's Wallets page: every balance and "You have", a wallet's transactions,
-Add card, Edit / Delete a card, Add money to a card, Cash you hold now, Move money, and Check wallets.
+New card, Edit / Delete a card, Move money (and "Move money here" on a card), Check cash, and
+Check wallets.
 
 * **A wallet** (`wal:c:{card}:{page}`, `wal:k:{page}` for cash): its balance and its recent
   transactions, 10 a page — the card's (or the cash) portion of a split payment, as the web shows.
   A number opens the transaction (🧾 History's screens), whose Back comes here.
-* **Add card** — nickname → last 4 digits → network → starting balance → Create (`POST /cards`;
+* **New card** — nickname → last 4 digits → network → starting balance → Create (`POST /cards`;
   the bank name mirrors the nickname, as the web now does).
 * **Edit card** — what the web's form edits: network, nickname, last 4 digits, starting balance and
   colour (`PUT /cards/{id}`, the stored bank name kept), on `pay`'s form card. **Delete card** asks
   first; a refusal (a card that still has transactions) is shown as the server words it.
-* **Add money** to a card / **Move money** — from → to → amount → Transfer
-  (`POST /transactions/transfer`; cash is a null card id). The backend refuses a transfer until the
+* **Move money** (from a card: **Move money here**) — from → to → amount → Move money
+  (`POST /transactions/transfer`; cash is a null card id). The backend refuses a move until the
   monthly income is set, so that is asked first.
-* **Cash you hold now** — the app's figure, the amount typed, and what the gap will be recorded as
-  (everyday spending, or found money) before Save (`POST /cash-balances/current`; the server books
-  the difference). With no cash pot yet, **Add cash** sets its starting amount (`POST /cash-balances`).
-* **Check wallets** is the wallet check-in (`GET/POST /months/checkin`): type what is really in each
-  wallet now; any gap from the app's figure is saved as everyday spending. One typed balance per
+* **Check cash** — the app's figure, the amount typed, and what the gap will be recorded as
+  (spending that is not itemised, or more than expected) before Save (`POST /cash-balances/current`;
+  the server books the difference). With no cash pot yet, the same button sets what is held
+  (`POST /cash-balances`).
+* **Check wallets** (`GET/POST /months/checkin`): type what is really in each wallet now; any gap
+  from the app's figure is recorded as spending, not itemised. One typed balance per
   wallet, then a review where any wallet can be corrected, then Save. A refusal keeps every
   balance already typed.
 
@@ -60,7 +62,7 @@ NETWORK_KEYS = (("UZCARD", "wallet.net.UZCARD"), ("HUMO", "wallet.net.HUMO"), ("
 
 
 class WalletFlow(StatesGroup):
-    """Add card, Move money / Add money, Cash you hold now. `pick` is every button-only step."""
+    """New card, Move money, Check cash. `pick` is every button-only step."""
     card_name = State()
     card_last4 = State()
     card_balance = State()
@@ -439,11 +441,8 @@ async def show_cash(event, page: int = 0, notice: str | None = None) -> None:
     if pot is None:
         lines += ["", t(chat_id, "wallet.cashEmptyHint")]
     else:
-        current, initial = home.n(pot.get("currentBalance")), home.n(pot.get("initialBalance"))
-        line = t(chat_id, "wallet.balance", amount=fmt_money(current))
-        if round(current - initial, 2) != 0:
-            line += " · " + t(chat_id, "wallet.startingAmount", amount=fmt_money(initial))
-        lines += [line, "", t(chat_id, "wallet.cashTxSubtitle")]
+        lines += [t(chat_id, "wallet.balance", amount=fmt_money(home.n(pot.get("currentBalance")))),
+                  "", t(chat_id, "wallet.cashTxSubtitle")]
         rows = [tx for tx in res.get("content") or [] if isinstance(tx, dict)]
         block, buttons = history.list_block(chat_id, rows, page * TX_PAGE, f"k.{page}",
                                             lambda tx: home.n(tx.get("cashAmount")))
@@ -454,7 +453,7 @@ async def show_cash(event, page: int = 0, notice: str | None = None) -> None:
     await common.show(event, "\n".join(lines), ikb([
         *buttons,
         _pager(chat_id, res, page, "wal:k:") if pot else [],
-        [(t(chat_id, "wallet.updateCashBtn" if pot else "wallet.addCashBtn"), "wal:kx")],
+        [(t(chat_id, "wallet.updateCashBtn"), "wal:kx")],
         ui.nav(chat_id, back="wal", home=True),
     ]))
 
@@ -483,10 +482,10 @@ async def on_cash(cb: CallbackQuery, state: FSMContext) -> None:
     await show_cash(cb, _page_of(cb.data.split(":")[2]))
 
 
-# ── Cash you hold now ───────────────────────────────────────────────────────
+# ── Check cash ──────────────────────────────────────────────────────────────
 @router.callback_query(F.data == "wal:kx")
 async def on_cash_edit(cb: CallbackQuery, state: FSMContext) -> None:
-    """With a pot: "Cash you hold now" (the app's figure, then the amount). Without: Add cash."""
+    """Check cash. With a pot: the app's figure, then the amount. Without: the amount held."""
     await common.ack(cb)
     if not await common.gate(cb):
         return
@@ -504,7 +503,7 @@ async def on_cash_edit(cb: CallbackQuery, state: FSMContext) -> None:
     else:
         app = home.n(pot.get("currentBalance"))
         await state.update_data(wk={"app": app})
-        lines = [t(chat_id, "wallet.cashNowTitle"), "", t(chat_id, "wallet.cashAppThinks", amount=fmt_money(app)),
+        lines = [t(chat_id, "wallet.cashModalTitle"), "", t(chat_id, "wallet.cashAppThinks", amount=fmt_money(app)),
                  "", t(chat_id, "wallet.cashNowAsk", currency=CURRENCY)]
     await common.show(cb, "\n".join(lines), ikb([ui.nav(chat_id, back="wal:k:0", home=True)]))
 
@@ -537,7 +536,7 @@ async def on_cash_typed(message: Message, state: FSMContext) -> None:
         # typed again here replaces this one.
         await state.update_data(wk=dict(wk, held=value))
         await common.show(message, "\n".join([
-            t(chat_id, "wallet.cashNowTitle"), "",
+            t(chat_id, "wallet.cashModalTitle"), "",
             t(chat_id, "wallet.cashAppThinks", amount=fmt_money(wk["app"])),
             t(chat_id, "wallet.cashYouHold", amount=fmt_money(value)), "",
             _cash_gap(chat_id, wk["app"], value)]),

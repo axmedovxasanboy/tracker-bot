@@ -48,7 +48,7 @@ EN: dict[str, str] = {
     "record.saved.expense": "✅ Saved: expense {amount}",
     "record.saved.income": "✅ Saved: income {amount}",
     "record.repeatNone": "Nothing to repeat yet — record something first.",
-    "record.repeatCant": "Your last entry was a payment or a transfer — repeat it from the web app.",
+    "record.repeatCant": "Your last entry was a payment or a move between wallets — repeat it from the web app.",
     "record.notUnderstood": ("🤔 I didn't get that. To record, start with the amount: "
                              "<code>50000 lunch</code>, or <code>+2000000 salary</code> for income."),
 }
@@ -99,7 +99,7 @@ UZ: dict[str, str] = {
     "record.saved.expense": "✅ Saqlandi: xarajat {amount}",
     "record.saved.income": "✅ Saqlandi: daromad {amount}",
     "record.repeatNone": "Takrorlaydigan narsa hali yoʻq — avval biror narsa yozing.",
-    "record.repeatCant": "Oxirgi yozuvingiz toʻlov yoki oʻtkazma edi — uni veb-ilovadan takrorlang.",
+    "record.repeatCant": "Oxirgi yozuvingiz toʻlov yoki hamyonlar orasidagi oʻtkazma edi — uni veb-ilovadan takrorlang.",
     "record.notUnderstood": ("🤔 Tushunmadim. Yozish uchun summadan boshlang: "
                              "<code>50000 tushlik</code>, daromad uchun esa <code>+2000000 maosh</code>."),
 }

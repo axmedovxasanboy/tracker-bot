@@ -2,18 +2,18 @@
 
 `pay.*`
 
-Wording follows the web's pay dialogs (en/uz.home.ts, en/uz.components.ts): "Not from a wallet",
-"Take money out", "Got money back", "Pay into".
+Wording follows the word list (UX-FIXES-SPEC §1): Pay a bill or a loan · Put in savings · Give a
+donation · Take out · Got money back · "Not from a wallet". No "account", no "add money".
 """
 
 EN: dict[str, str] = {
     # Quick pay
     "pay.header": "{icon} <b>{name}</b>\n{amount} · today",
     "pay.into": "Into: {name}",
-    "pay.payInto": "Pay into which account?",
-    "pay.whichKind": "Which kind of donation?",
+    "pay.payInto": "Put it into which one?",
+    "pay.whichKind": "What kind?",
     "pay.kindOf": "Kind: {name}",
-    "pay.fundOption": "Emergency fund — without an account",
+    "pay.fundOption": "Emergency fund",
     "pay.fromWhich": "From which wallet?",
     "pay.intoWhich": "Into which wallet?",
     "pay.wallet": "{name} · {amount}",
@@ -23,19 +23,19 @@ EN: dict[str, str] = {
     "pay.upTo": "Up to {amount}.",
     "pay.tooMuch": "That's more than is left — at most {amount}.",
     "pay.done": "✅ Paid {amount} — {name}",
-    "pay.doneSaved": "✅ Added {amount} — {name}",
-    "pay.doneNoWallet": "✅ Added {amount} — {name}. No wallet was touched, so it doesn't count toward this month's savings.",
+    "pay.doneSaved": "✅ Put in {amount} — {name}",
+    "pay.doneNoWallet": "✅ Put in {amount} — {name}. No wallet was touched, so it doesn't count toward what you set aside this month.",
+    "pay.doneGiven": "✅ Gave {amount} — {name}",
     "pay.doneBack": "✅ Got {amount} back — {name}",
-    "pay.doneOut": "✅ Took {amount} from {name} — added to {wallet}",
+    "pay.doneOut": "✅ Took {amount} out of {name} — into {wallet}",
     "pay.gone": "✅ That's already taken care of.",
-    "pay.noAccount": "You have no investment account yet. Add one first, then pay into it.",
-    "pay.addInvestment": "➕ Add investment",
+    "pay.noAccount": "You have no investment yet. Create one first, then put money into it.",
+    "pay.addInvestment": "➕ New investment",
     "pay.loadError": "❌ Couldn't load this. Try again.",
     "pay.del.yes": "🗑 Yes, delete",
 
     # Forms
     "pay.f.save": "✅ Save",
-    "pay.f.add": "✅ Add",
     "pay.f.row": "{label}: <b>{value}</b>",
     "pay.f.now": "Now: {value}",
     "pay.f.askText": "Send it as a message.",
@@ -59,10 +59,10 @@ EN: dict[str, str] = {
 UZ: dict[str, str] = {
     "pay.header": "{icon} <b>{name}</b>\n{amount} · bugun",
     "pay.into": "Qayerga: {name}",
-    "pay.payInto": "Qaysi hisobga toʻlanadi?",
-    "pay.whichKind": "Qanday xayriya?",
+    "pay.payInto": "Qaysi biriga jamgʻariladi?",
+    "pay.whichKind": "Qanday turi?",
     "pay.kindOf": "Turi: {name}",
-    "pay.fundOption": "Favqulodda jamgʻarma — hisobsiz",
+    "pay.fundOption": "Favqulodda jamgʻarma",
     "pay.fromWhich": "Qaysi hamyondan?",
     "pay.intoWhich": "Qaysi hamyonga?",
     "pay.wallet": "{name} · {amount}",
@@ -72,18 +72,18 @@ UZ: dict[str, str] = {
     "pay.upTo": "Koʻpi bilan {amount}.",
     "pay.tooMuch": "Bu qolgan summadan koʻp — koʻpi bilan {amount}.",
     "pay.done": "✅ Toʻlandi: {amount} — {name}",
-    "pay.doneSaved": "✅ Qoʻshildi: {amount} — {name}",
-    "pay.doneNoWallet": "✅ Qoʻshildi: {amount} — {name}. Hech bir hamyonga tegilmadi, shuning uchun shu oyning jamgʻarmasiga hisoblanmaydi.",
+    "pay.doneSaved": "✅ Jamgʻarildi: {amount} — {name}",
+    "pay.doneNoWallet": "✅ Jamgʻarildi: {amount} — {name}. Hech bir hamyonga tegilmadi, shuning uchun shu oy ajratilgan pulga hisoblanmaydi.",
+    "pay.doneGiven": "✅ Xayriya qilindi: {amount} — {name}",
     "pay.doneBack": "✅ Qaytarildi: {amount} — {name}",
-    "pay.doneOut": "✅ {name} dan {amount} yechildi — {wallet} ga qoʻshildi",
+    "pay.doneOut": "✅ {name} dan {amount} yechildi — {wallet} ga tushdi",
     "pay.gone": "✅ Bu allaqachon bajarilgan.",
-    "pay.noAccount": "Hali investitsiya hisobingiz yoʻq. Avval uni qoʻshing, keyin unga toʻlang.",
-    "pay.addInvestment": "➕ Investitsiya qoʻshish",
+    "pay.noAccount": "Hali investitsiyangiz yoʻq. Avval uni yarating, keyin unga pul jamgʻaring.",
+    "pay.addInvestment": "➕ Yangi investitsiya",
     "pay.loadError": "❌ Buni yuklab boʻlmadi. Qayta urinib koʻring.",
     "pay.del.yes": "🗑 Ha, oʻchirish",
 
     "pay.f.save": "✅ Saqlash",
-    "pay.f.add": "✅ Qoʻshish",
     "pay.f.row": "{label}: <b>{value}</b>",
     "pay.f.now": "Hozir: {value}",
     "pay.f.askText": "Xabar qilib yuboring.",

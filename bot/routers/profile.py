@@ -1,12 +1,15 @@
 """👤 Profile — the web's Profile page (`GET /profile`) as one message, in the web's order:
 
-1. the level — a whole number, never a sub-level — with the progress to the next one, the reason
-   the savings rule is what it is, and next month's rule when it changes;
-2. the savings rule's percentages;
-3. to set aside this month — percent × savings base = amount (and a month without a bonus);
-4. {Month} so far — the salary, avans and bonus recorded, and what was set aside;
-5. how it is worked out — the two ladders. The savings base is the monthly income from Settings
-   plus this month's bonus: recording the salary never moves the targets, only a bonus does.
+1. one sentence — "This month: set aside X — P% of Y";
+2. the level — a whole number, never a sub-level — on its own line, with what is left after bills
+   and where the next level starts; next month's rule when it changes;
+3. the savings rule's percentages;
+4. to set aside this month — percent × what the percentages apply to (and a month without a bonus);
+5. {Month} so far — "Pay for {month}" (the salary, avans and bonus counted for it) and "Set aside
+   so far", split into Saved and Given (the donation is Given, never Saved);
+6. how it is worked out, last — why the rule asks what it asks, then the two ladders. What the
+   percentages apply to is the monthly income from Settings plus this month's bonus: recording
+   the salary never moves the targets, only a bonus does.
 
 Callbacks owned here: `prof`.
 """
@@ -41,7 +44,6 @@ _REASON = {
 # The sentences that name the cutoff are left unsaid rather than said with a hole in them.
 _NAMES_CUTOFF = frozenset({"BANK_LOAN_COMFORTABLE", "BANK_LOAN_TIGHT", "DEBTS_COMFORTABLE", "DEBTS_TIGHT"})
 _ORDER = ("DONATION", "EMERGENCY", "INVESTMENTS", "GOALS")
-_BAR = 10
 
 
 def _decimal(chat_id: int | None, value: float, places: int = 1) -> str:
@@ -78,37 +80,43 @@ def _rung(chat_id: int | None, sign: str, label: str, amount) -> str:
 
 def compose(chat_id: int | None, p: dict) -> list[str]:
     lines: list[str] = []
+    month = str(p.get("month") or clock.month())[:7]
+    income, allocated = p.get("incomeThisMonth"), p.get("allocatedThisMonth")
+
+    # ── The sentence ──
+    if isinstance(allocated, dict):
+        total = fmt_money(n(allocated.get("total")))
+        if allocated.get("percentOfBase") is not None:
+            lines += [t(chat_id, "profile.lead", total=total, base=fmt_money(n(p.get("savingsBase"))),
+                        percent=_decimal(chat_id, n(allocated["percentOfBase"]))), ""]
+        else:
+            lines += [t(chat_id, "profile.leadShort", total=total), ""]
+
     # ── The level ──
     level = p.get("level")
-    lines += [t(chat_id, "profile.levelLabel"),
-              t(chat_id, "profile.level", n=level) if level is not None else t(chat_id, "profile.noLevel"),
-              t(chat_id, "profile.leftAfterBills", amount=fmt_money(n(p.get("leftAfterBills"))))]
-    nxt, frm = p.get("nextLevelAt"), n(p.get("levelFrom"))
+    nxt = p.get("nextLevelAt")
+    quiet = [t(chat_id, "profile.leftAfterBills", amount=fmt_money(n(p.get("leftAfterBills"))))]
     if p.get("aboveCeiling"):
-        lines.append(t(chat_id, "profile.aboveCeiling"))
-    elif nxt is None:
-        if level is not None:
-            lines.append(t(chat_id, "profile.topLevel"))
-    else:
-        span = n(nxt) - frm
-        pct = min(100.0, max(0.0, (n(p.get("leftAfterBills")) - frm) / span * 100)) if span > 0 else 0.0
-        filled = round(pct / 100 * _BAR)
-        lines.append(t(chat_id, "profile.progress", bar="▰" * filled + "▱" * (_BAR - filled), percent=int(pct)))
-        lines.append(t(chat_id, "profile.nextLevel", n=(level or 0) + 1, amount=fmt_money(n(nxt))))
+        quiet.append(t(chat_id, "profile.aboveCeiling"))
+    elif nxt is not None:
+        quiet.append(t(chat_id, "profile.nextLevel", n=(level or 0) + 1, amount=fmt_money(n(nxt))))
+    elif level is not None:
+        quiet.append(t(chat_id, "profile.topLevel"))
+    lines += [t(chat_id, "profile.level", n=level) if level is not None else t(chat_id, "profile.noLevel"),
+              " · ".join(quiet)]
+    # Why the rule asks what it asks — said in "How it is worked out", at the end.
     rule = p.get("rule") if isinstance(p.get("rule"), dict) else {}
     cutoff = rule.get("cutoff")
     why = [_reason(chat_id, rule.get("reason"), cutoff)]
     if rule.get("smallMonthlyLoans"):
-        # Monthly loan payments to people count as "money you owe" only above 10% of the monthly
-        # income (a loan to repay fast always does). Below it, say why they change nothing.
+        # Monthly loan payments to people count only above 10% of the monthly income (a loan to
+        # repay fast always does). Below it, say why they change nothing.
         limit = rule.get("monthlyLoanLimit")
         if limit is None and n(p.get("stableIncome")) > 0:
             limit = n(p.get("stableIncome")) / 10
         if limit is not None:
             why.append(t(chat_id, "profile.reason.smallMonthlyLoans", limit=fmt_money(n(limit))))
     why = [line for line in why if line]
-    if why:
-        lines += ["", *why]
     nm = p.get("nextMonth")
     if isinstance(nm, dict) and nm.get("month"):
         next_why = _reason(chat_id, nm.get("reason"), cutoff)
@@ -129,7 +137,6 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     # ── To set aside this month ──
     # As on Home: this month's amount plus what earlier months left unpaid (`carried`, when sent).
     base = n(p.get("savingsBase"))
-    month = str(p.get("month") or clock.month())[:7]
     lines += ["", t(chat_id, "profile.setAsideTitle")]
     for b in buckets:
         carried = max(0.0, n(b.get("carried")))
@@ -152,15 +159,16 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
                                         for b in buckets) + "</i>")
 
     # ── This month so far ──
-    income, allocated = p.get("incomeThisMonth"), p.get("allocatedThisMonth")
     if isinstance(income, dict) or isinstance(allocated, dict):
         lines += ["", t(chat_id, "profile.soFar", month=history.month_name(chat_id, month))]
     if isinstance(income, dict):
-        # The lines the server marks `inBase` — salary, avans, bonus (the owner's call on the web).
+        # "Pay for {month}": the lines the server marks `inBase` — salary, avans, bonus, counted for
+        # the month they are for (not "In", which goes by the day the money arrived).
         in_base = sorted((line for line in income.get("lines") or []
                           if isinstance(line, dict) and line.get("inBase") is not False),
                          key=lambda line: -n(line.get("amount")))
-        lines.append(t(chat_id, "profile.incomeThisMonth", amount=fmt_money(sum(n(x.get("amount")) for x in in_base))))
+        lines.append(t(chat_id, "profile.payFor", month=history.month_name(chat_id, month),
+                       amount=fmt_money(sum(n(x.get("amount")) for x in in_base))))
         if not in_base:
             lines.append(t(chat_id, "profile.noIncomeYet"))
         for line in in_base:
@@ -169,21 +177,23 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     if isinstance(allocated, dict):
         if isinstance(income, dict):
             lines.append("")
-        lines.append(t(chat_id, "profile.setAsideSoFar", amount=fmt_money(n(allocated.get("total")))))
-        if "percentOfBase" in allocated:
-            if allocated.get("percentOfBase") is not None:
-                lines.append(t(chat_id, "profile.ofBase", percent=_decimal(chat_id, n(allocated["percentOfBase"]))))
-        elif allocated.get("percentOfIncome") is not None:
-            lines.append(t(chat_id, "profile.ofIncome", percent=_decimal(chat_id, n(allocated["percentOfIncome"]))))
         rows = sorted((r for r in allocated.get("lines") or [] if isinstance(r, dict) and r.get("bucket") in _ORDER),
                       key=lambda r: _ORDER.index(r["bucket"]))
+        lines.append(t(chat_id, "profile.setAsideSoFar", amount=fmt_money(n(allocated.get("total")))))
+        if rows:  # set aside = saved + given: the donation is given, never saved
+            given = sum(n(r.get("amount")) for r in rows if r["bucket"] == "DONATION")
+            lines.append(t(chat_id, "profile.savedGiven", saved=fmt_money(max(0.0, n(allocated.get("total")) - given)),
+                           given=fmt_money(given)))
+        if "percentOfBase" not in allocated and allocated.get("percentOfIncome") is not None:
+            lines.append(t(chat_id, "profile.ofIncome", percent=_decimal(chat_id, n(allocated["percentOfIncome"]))))
         for r in rows:
             share = r.get("percentOfBase") if "percentOfBase" in r else r.get("percentOfIncome")
             target = r.get("target")
             if target is not None:
                 target = home.savings_total(r)  # this month's plus what earlier months left unpaid
             met = target is not None and n(target) > 0 and n(r.get("amount")) >= n(target)
-            lines.append(t(chat_id, "profile.allocRow", name=bucket_name(chat_id, r["bucket"]),
+            name = t(chat_id, "profile.given") if r["bucket"] == "DONATION" else bucket_name(chat_id, r["bucket"])
+            lines.append(t(chat_id, "profile.allocRow", name=name,
                            amount=fmt_money(n(r.get("amount"))) + (" ✓" if met else ""),
                            share="—" if share is None else f"{_decimal(chat_id, n(share))}%"))
             extra = []
@@ -196,7 +206,7 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
                 lines.append("   <i>" + " · ".join(extra) + "</i>")
 
     # ── How it is worked out ──
-    lines += ["", t(chat_id, "profile.howTitle"), t(chat_id, "profile.levelLadder"),
+    lines += ["", t(chat_id, "profile.howTitle"), *why, t(chat_id, "profile.levelLadder"),
               _rung(chat_id, " ", t(chat_id, "profile.income"), p.get("stableIncome")),
               _rung(chat_id, "−", t(chat_id, "profile.bills"), p.get("monthlyBills")),
               "<b>" + _rung(chat_id, "=", t(chat_id, "profile.afterBills"), p.get("leftAfterBills")) + "</b>"]

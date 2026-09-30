@@ -9,7 +9,7 @@ from . import clock
 from .i18n import t
 from .keyboards import ikb
 
-__all__ = ["day", "grid", "ikb", "month_name", "month_short", "month_text", "nav", "shift_month"]
+__all__ = ["day", "flow", "grid", "ikb", "month_name", "month_short", "month_text", "nav", "shift_month"]
 
 Row = list[tuple[str, str]]
 
@@ -29,6 +29,18 @@ def grid(items: list[tuple[str, str]], per_row: int = 2) -> list[Row]:
     """Lay (text, callback_data) pairs out N to a row."""
     per_row = max(1, per_row)
     return [items[i:i + per_row] for i in range(0, len(items), per_row)]
+
+
+def flow(items: list[tuple[str, str]], per_row: int = 2, wide: int = 20) -> list[Row]:
+    """Like `grid`, but a label longer than `wide` gets a row to itself, so a worded button
+    ("Put in · Emergency fund") is never cut short by its neighbour."""
+    rows: list[Row] = []
+    for item in items:
+        if len(item[0]) > wide or not rows or len(rows[-1]) >= per_row or len(rows[-1][0][0]) > wide:
+            rows.append([item])
+        else:
+            rows[-1].append(item)
+    return rows
 
 
 def nav(chat_id: int | None, back: str | None = None, cancel: str | None = None,

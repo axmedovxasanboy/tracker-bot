@@ -61,7 +61,7 @@ EN: dict[str, str] = {
     "settings.countingFrom": "Counting from: <b>{month}</b> <i>(once set, this can’t be changed)</i>",
     "settings.countingNotSet": "Counting from: <i>not set yet</i>",
     "settings.categoriesBtn": "🏷 Categories",
-    "settings.dangerBtn": "⚠️ Danger Zone",
+    "settings.dangerBtn": "🗑 Delete everything",
     "settings.langBtn": "🌐 Oʻzbekcha",
     "settings.incomeBtn": "💰 Monthly income",
     "settings.helpBtn": "❓ Help",
@@ -72,7 +72,7 @@ EN: dict[str, str] = {
 
     # Categories (Settings → Categories), the web's words.
     "settings.cat.title": "🏷 <b>Categories</b>",
-    "settings.cat.intro": "Add, rename and group your categories.",
+    "settings.cat.intro": "Create, rename and group your categories.",
     "settings.cat.count": "{expense} expense · {income} income",
     "settings.cat.expenseBtn": "➖ Expense",
     "settings.cat.incomeBtn": "➕ Income",
@@ -81,8 +81,8 @@ EN: dict[str, str] = {
     "settings.cat.none": "No categories yet",
     "settings.cat.row": "• {name}",
     "settings.cat.rowSubs": "• {name} · {count} sub",
-    "settings.cat.addBtn": "➕ Add category",
-    "settings.cat.addSubBtn": "➕ Add sub-category",
+    "settings.cat.addBtn": "➕ New category",
+    "settings.cat.addSubBtn": "➕ New sub-category",
     "settings.cat.renameBtn": "✏️ Rename",
     "settings.cat.subOf": "Sub-category of <b>{name}</b>",
     "settings.cat.typeExpense": "Expense",
@@ -92,12 +92,12 @@ EN: dict[str, str] = {
     "settings.cat.nameUzNone": "Name (Uzbek): <i>none — the English name is shown</i>",
     "settings.cat.subsTitle": "<b>Sub-categories</b>",
     "settings.cat.subsNone": "No sub-categories.",
-    "settings.cat.pickType": "🏷 <b>Add category</b>\n\nIs it for income or expenses?",
+    "settings.cat.pickType": "🏷 <b>New category</b>\n\nIs it for income or expenses?",
     "settings.cat.askName": "🏷 <b>{title}</b>\n\nSend the name in English, e.g. <i>Food &amp; Dining</i>.",
     "settings.cat.askNameUz": ("🏷 <b>{title}</b>\n\nNow the Uzbek name — shown when the app is in "
                                "Uzbek. Skip it to use the English name."),
-    "settings.cat.addTitle": "Add category",
-    "settings.cat.addSubTitle": "Add sub-category to “{name}”",
+    "settings.cat.addTitle": "New category",
+    "settings.cat.addSubTitle": "New sub-category of “{name}”",
     "settings.cat.editTitle": "Edit “{name}”",
     "settings.cat.clearUz": "🧹 No Uzbek name",
     "settings.cat.tooLong": "That name is too long — keep it under {limit} characters.",
@@ -107,25 +107,22 @@ EN: dict[str, str] = {
     "settings.cat.deleted": "✅ Category deleted",
     "settings.cat.gone": "That category is gone.",
 
-    # Danger Zone — the factory reset, behind the account password as on the web.
-    "settings.danger.title": "⚠️ <b>Danger Zone</b>",
-    "settings.danger.body": ("<b>Clear everything.</b> Permanently deletes all transactions, cards, "
-                             "finance records, categories, settings, and your account — then starts "
-                             "the app over from zero, exactly like a fresh install. This cannot be undone."),
-    "settings.danger.clearBtn": "🧨 Clear everything",
-    "settings.danger.confirmTitle": "⚠️ <b>Clear everything?</b>",
+    # Delete everything — the factory reset, behind the account password as on the web.
+    "settings.danger.title": "⚠️ <b>Delete everything</b>",
+    "settings.danger.body": "Permanently deletes all transactions, cards, finance records, categories, settings, and your account — then starts the app over from zero, exactly like a fresh install. This cannot be undone.",
+    "settings.danger.clearBtn": "🧨 Delete everything",
+    "settings.danger.confirmTitle": "⚠️ <b>Delete everything?</b>",
     "settings.danger.confirmBody": ("This permanently deletes ALL your data — transactions, cards, finance "
                                     "records, categories, settings, and your account itself — and starts the "
                                     "app over from zero. This cannot be undone. You will be asked for your "
                                     "password next."),
     "settings.danger.continueBtn": "Continue",
     "settings.danger.passwordTitle": "🔑 <b>Confirm with your password</b>",
-    "settings.danger.passwordAsk": ("Enter your account password to permanently clear everything and start "
-                                    "from zero. I delete your message as soon as I read it."),
+    "settings.danger.passwordAsk": "Enter your account password to permanently delete everything and start from zero. I delete your message as soon as I read it.",
     "settings.danger.notDeleted": "⚠️ I couldn’t delete your password message — delete it yourself.",
-    "settings.danger.clearing": "⏳ Clearing…",
+    "settings.danger.clearing": "⏳ Deleting…",
     "settings.danger.wrong": "❌ Incorrect password. Try again, or cancel.",
-    "settings.danger.done": "✅ <b>Reset complete</b>\n\nEverything was cleared. Starting fresh — please sign up.",
+    "settings.danger.done": "✅ <b>Everything is deleted</b>\n\nStarting fresh — please sign up.",
 }
 
 UZ: dict[str, str] = {
@@ -176,7 +173,7 @@ UZ: dict[str, str] = {
     "settings.countingFrom": "Hisob boshlangan oy: <b>{month}</b> <i>(bir marta belgilangach, buni oʻzgartirib boʻlmaydi)</i>",
     "settings.countingNotSet": "Hisob boshlangan oy: <i>hali belgilanmagan</i>",
     "settings.categoriesBtn": "🏷 Kategoriyalar",
-    "settings.dangerBtn": "⚠️ Xavfli hudud",
+    "settings.dangerBtn": "🗑 Hammasini oʻchirish",
     "settings.langBtn": "🌐 English",
     "settings.incomeBtn": "💰 Oylik daromad",
     "settings.helpBtn": "❓ Yordam",
@@ -186,7 +183,7 @@ UZ: dict[str, str] = {
     "settings.incomeSaved": "✅ Oylik daromad saqlandi: {amount}",
 
     "settings.cat.title": "🏷 <b>Kategoriyalar</b>",
-    "settings.cat.intro": "Kategoriyalarni qoʻshish, nomini oʻzgartirish va guruhlash.",
+    "settings.cat.intro": "Kategoriyalarni yaratish, nomini oʻzgartirish va guruhlash.",
     "settings.cat.count": "{expense} ta xarajat · {income} ta daromad",
     "settings.cat.expenseBtn": "➖ Xarajat",
     "settings.cat.incomeBtn": "➕ Daromad",
@@ -195,8 +192,8 @@ UZ: dict[str, str] = {
     "settings.cat.none": "Hozircha kategoriya yoʻq",
     "settings.cat.row": "• {name}",
     "settings.cat.rowSubs": "• {name} · {count} ta ichki",
-    "settings.cat.addBtn": "➕ Kategoriya qoʻshish",
-    "settings.cat.addSubBtn": "➕ Ichki kategoriya qoʻshish",
+    "settings.cat.addBtn": "➕ Yangi kategoriya",
+    "settings.cat.addSubBtn": "➕ Yangi ichki kategoriya",
     "settings.cat.renameBtn": "✏️ Nomini oʻzgartirish",
     "settings.cat.subOf": "Ichki kategoriyasi: <b>{name}</b>",
     "settings.cat.typeExpense": "Xarajat",
@@ -206,12 +203,12 @@ UZ: dict[str, str] = {
     "settings.cat.nameUzNone": "Nomi (oʻzbekcha): <i>yoʻq — inglizcha nomi koʻrsatiladi</i>",
     "settings.cat.subsTitle": "<b>Ichki kategoriyalar</b>",
     "settings.cat.subsNone": "Ichki kategoriya yoʻq.",
-    "settings.cat.pickType": "🏷 <b>Kategoriya qoʻshish</b>\n\nDaromad uchunmi yoki xarajat uchunmi?",
+    "settings.cat.pickType": "🏷 <b>Yangi kategoriya</b>\n\nDaromad uchunmi yoki xarajat uchunmi?",
     "settings.cat.askName": "🏷 <b>{title}</b>\n\nInglizcha nomini yuboring, masalan <i>Food &amp; Dining</i>.",
     "settings.cat.askNameUz": ("🏷 <b>{title}</b>\n\nEndi oʻzbekcha nomi — ilova oʻzbek tilida boʻlganda "
                                "koʻrsatiladi. Oʻtkazib yuborsangiz, inglizcha nomi ishlatiladi."),
-    "settings.cat.addTitle": "Kategoriya qoʻshish",
-    "settings.cat.addSubTitle": "“{name}” uchun ichki kategoriya qoʻshish",
+    "settings.cat.addTitle": "Yangi kategoriya",
+    "settings.cat.addSubTitle": "“{name}” uchun yangi ichki kategoriya",
     "settings.cat.editTitle": "“{name}” ni tahrirlash",
     "settings.cat.clearUz": "🧹 Oʻzbekcha nomsiz",
     "settings.cat.tooLong": "Nom juda uzun — {limit} ta belgidan qisqaroq boʻlsin.",
@@ -221,22 +218,19 @@ UZ: dict[str, str] = {
     "settings.cat.deleted": "✅ Kategoriya oʻchirildi",
     "settings.cat.gone": "Bu kategoriya endi yoʻq.",
 
-    "settings.danger.title": "⚠️ <b>Xavfli hudud</b>",
-    "settings.danger.body": ("<b>Hammasini tozalash.</b> Barcha tranzaksiyalar, kartalar, moliya yozuvlari, "
-                             "kategoriyalar, sozlamalar va hisobingizni butunlay oʻchirib, ilovani xuddi yangi "
-                             "oʻrnatilgandek noldan boshlaydi. Buni ortga qaytarib boʻlmaydi."),
-    "settings.danger.clearBtn": "🧨 Hammasini tozalash",
-    "settings.danger.confirmTitle": "⚠️ <b>Hammasi tozalansinmi?</b>",
+    "settings.danger.title": "⚠️ <b>Hammasini oʻchirish</b>",
+    "settings.danger.body": "Barcha tranzaksiyalar, kartalar, moliya yozuvlari, kategoriyalar, sozlamalar va hisobingizni butunlay oʻchirib, ilovani xuddi yangi oʻrnatilgandek noldan boshlaydi. Buni ortga qaytarib boʻlmaydi.",
+    "settings.danger.clearBtn": "🧨 Hammasini oʻchirish",
+    "settings.danger.confirmTitle": "⚠️ <b>Hammasi oʻchirilsinmi?</b>",
     "settings.danger.confirmBody": ("Bu barcha maʼlumotlaringizni — tranzaksiyalar, kartalar, moliya yozuvlari, "
                                     "kategoriyalar, sozlamalar va hisobingizning oʻzini — butunlay oʻchirib, "
                                     "ilovani noldan boshlaydi. Buni ortga qaytarib boʻlmaydi. Keyingi qadamda "
                                     "parolingiz soʻraladi."),
     "settings.danger.continueBtn": "Davom etish",
     "settings.danger.passwordTitle": "🔑 <b>Parolingiz bilan tasdiqlang</b>",
-    "settings.danger.passwordAsk": ("Hammasini butunlay tozalab, noldan boshlash uchun hisob parolingizni "
-                                    "kiriting. Xabaringizni oʻqishim bilan oʻchirib tashlayman."),
+    "settings.danger.passwordAsk": "Hammasini butunlay oʻchirib, noldan boshlash uchun hisob parolingizni kiriting. Xabaringizni oʻqishim bilan oʻchirib tashlayman.",
     "settings.danger.notDeleted": "⚠️ Parol yozilgan xabarni oʻchira olmadim — uni oʻzingiz oʻchiring.",
-    "settings.danger.clearing": "⏳ Tozalanmoqda…",
+    "settings.danger.clearing": "⏳ Oʻchirilmoqda…",
     "settings.danger.wrong": "❌ Parol notoʻgʻri. Qayta urinib koʻring yoki bekor qiling.",
-    "settings.danger.done": "✅ <b>Tozalash yakunlandi</b>\n\nHammasi tozalandi. Yangidan boshlanmoqda — iltimos, roʻyxatdan oʻting.",
+    "settings.danger.done": "✅ <b>Hammasi oʻchirildi</b>\n\nYangidan boshlanmoqda — iltimos, roʻyxatdan oʻting.",
 }

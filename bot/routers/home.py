@@ -1,10 +1,13 @@
 """Home — the pocket advisor, built from `GET /advisor` (the same answer the web Home renders).
 
-Top to bottom, mirroring the web: the date; how much can be spent a day and until when; the pace
-warning or the "short" warning; what is coming up; this month's savings (a row asks for this
-month's target plus whatever earlier months left unpaid — its `carried`); what the owner has.
-Pay buttons sit only where the web puts a Pay button — this month's rows that are still to pay —
-and at most `_MAX_PAY` of them; everything else is for the web app. The bottom rows are the
+Top to bottom, mirroring the web: the date; the daily figure in one of the server's three states
+(`daily.verdict`: OK — "You can spend X a day"; OVER_PACE — "At your pace, money runs out on …",
+the cause in one sentence, then what reaching the end would take; SHORT — "You'll be short"); what
+is coming up; what to set aside this month (a row asks for this month's target plus whatever
+earlier months left unpaid — its `carried`); what the owner has. A server from before `verdict`
+gets the two lines it always had.
+Buttons sit only where the web puts one — this month's rows that are still open: Pay for a bill or
+a loan, Put in for savings, Give for the donation — and at most `_MAX_PAY` of them. The bottom rows are the
 three things the bot is for: record (➕ Add, or just type "50000 lunch"), pay, check wallets.
 
 `compose()` is shared with the optional evening message (`bot/reminders.py`).
@@ -115,6 +118,33 @@ def pay_callback(kind: str, ref: Any = None) -> str:
     return f"pay:{kind}:{ref}" if ref is not None else f"pay:{kind}"
 
 
+def savings_button(chat_id: int | None, row: dict, more: bool = False) -> str:
+    """The word on a savings row's button: Give for the donation, Put in for everything else
+    ("… more" once the month's ask is met)."""
+    if row.get("bucket") == "DONATION":
+        return t(chat_id, "home.btn.giveMore" if more else "home.btn.give")
+    return clip(t(chat_id, "home.btn.putInMore" if more else "home.btn.putIn", name=savings_name(chat_id, row)), 34)
+
+
+def _over_pace(chat_id: int | None, daily: dict) -> list[str]:
+    """OVER_PACE: the date the money runs out at the owner's real pace, the cause, and the way out."""
+    breakdown = daily.get("breakdown") if isinstance(daily.get("breakdown"), dict) else {}
+    until = ui.day(chat_id, daily.get("until"))
+    lines = [t(chat_id, "home.overPace", date=ui.day(chat_id, daily.get("runsOutOn")))]
+    cause = daily.get("cause")
+    if cause == "GOALS" and daily.get("safePerDayNoGoals") is not None and breakdown.get("goals") is not None:
+        lines.append(t(chat_id, "home.cause.goals", goals=fmt_money(n(breakdown["goals"])), until=until,
+                       amount=fmt_money(n(daily["safePerDayNoGoals"]))))
+    elif cause == "SAVINGS" and daily.get("safePerDayNoSavings") is not None and breakdown.get("savings") is not None:
+        lines.append(t(chat_id, "home.cause.savings", savings=fmt_money(n(breakdown["savings"])), until=until,
+                       amount=fmt_money(n(daily["safePerDayNoSavings"]))))
+    elif cause == "PACE" and daily.get("safePerDayNoSavings") is not None and daily.get("paceDaily") is not None:
+        lines.append(t(chat_id, "home.cause.pace", pace=fmt_money(n(daily["paceDaily"])),
+                       amount=fmt_money(n(daily["safePerDayNoSavings"]))))
+    lines.append(t(chat_id, "home.toReach", until=until, amount=fmt_money(n(daily.get("safePerDay")))))
+    return lines
+
+
 # ── The screen ──────────────────────────────────────────────────────────────
 def compose(chat_id: int | None, data: dict, header: str | None = None,
             notice: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
@@ -134,7 +164,9 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
         if short:
             lines.append(t(chat_id, "home.short", amount=fmt_money(n(short.get("amount"))),
                            date=ui.day(chat_id, short.get("date"))))
-        else:
+        elif daily.get("verdict") == "OVER_PACE" and daily.get("runsOutOn"):
+            lines += _over_pace(chat_id, daily)
+        else:  # OK — and every state of a server that sends no verdict
             safe = n(daily.get("safePerDay"))
             lines.append(t(chat_id, "home.perDay", amount=fmt_money(safe),
                            date=ui.day(chat_id, daily.get("until"))))
@@ -163,7 +195,7 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
             lines.append(t(chat_id, "home.upcoming.more", count=len(upcoming) - _MAX_UPCOMING))
         for u in upcoming:
             if payable_upcoming(u, month):
-                pays.append((clip("💳 " + str(u.get("name") or "—")),
+                pays.append((clip(t(chat_id, "home.btn.pay", name=str(u.get("name") or "—")), 34),
                              pay_callback(u["kind"], u.get("refId") if u.get("refId") is not None else 0)))
     elif data.get("missingStableIncome"):
         lines.append(t(chat_id, "home.noIncome"))
@@ -179,7 +211,7 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
             lines.append(t(chat_id, "home.savings.row", name=name, paid=fmt_num(n(r.get("paid"))),
                            target=fmt_money(savings_total(r))) + carried_note(chat_id, r, month))
             cb = pay_callback("GOAL", r["refId"]) if r.get("bucket") == "GOAL" else pay_callback(r["bucket"])
-            pays.append((clip("💳 " + savings_name(chat_id, r)), cb))
+            pays.append((savings_button(chat_id, r), cb))
 
     checked = checked_text(chat_id, data)
     due = any(isinstance(s, dict) and s.get("action") in ("CHECK_IN", "CLOSE_MONTH")
@@ -192,7 +224,7 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
     buttons = [b for b in pays if not (b[1] in seen or seen.add(b[1]))][:_MAX_PAY]
     kb: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(text=text, callback_data=cb) for text, cb in row]
-        for row in ui.grid(buttons, 2)]
+        for row in ui.flow(buttons)]
     if data.get("missingStableIncome"):
         kb.append([InlineKeyboardButton(text=t(chat_id, "settings.incomeBtn"), callback_data="set:income")])
     kb += keyboards.home_rows(chat_id)

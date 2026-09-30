@@ -1,9 +1,10 @@
-"""Home: the daily figure, Coming up, Savings this month, You have — and its buttons.
+"""Home: the daily figure, Coming up, To set aside this month, You have — and its buttons.
 
 `home.*`
 
 Mirrors the web Home (tracker-frontend en.home.ts / uz.home.ts). One name per thing: "You can
-spend … a day", "Coming up", "Savings this month", "You have". No engine words.
+spend … a day", "Coming up", "To set aside this month", "You have". One word per action (the word
+list, UX-FIXES-SPEC §1): Pay a bill or a loan · Put in savings · Give a donation. No engine words.
 """
 
 EN: dict[str, str] = {
@@ -11,6 +12,11 @@ EN: dict[str, str] = {
     "home.paceRunsOut": "⚠️ Lately ~{pace} a day → at that pace your money runs out around {date}",
     "home.paceOk": "✅ Lately ~{pace} a day — within your limit.",
     "home.short": "⚠️ <b>You’ll be short {amount}</b> on {date} — even if you spend nothing.",
+    "home.overPace": "⚠️ <b>At your pace, money runs out on {date}</b>",
+    "home.cause.goals": "Your plans take {goals} before {until}. Without them you could spend ~{amount} a day.",
+    "home.cause.savings": "What you set aside takes {savings} before {until}. Without it: ~{amount} a day.",
+    "home.cause.pace": "You spend about {pace} a day. Even with nothing set aside there is room for ~{amount} a day.",
+    "home.toReach": "To reach {until}: <b>~{amount}</b> a day.",
     "home.noIncome": "Set your monthly income, and I’ll show how much you can spend each day.",
 
     "home.upcoming.title": "<b>Coming up</b>",
@@ -21,7 +27,7 @@ EN: dict[str, str] = {
     "home.upcoming.repayFast": "repay fast",
     "home.upcoming.recorded": "✓ recorded",
 
-    "home.savings.title": "<b>Savings this month</b>",
+    "home.savings.title": "<b>To set aside this month</b>",
     "home.savings.row": "• {name} · {paid} of {target}",
     "home.savings.carried": "incl. {amount} from {month}",
     "home.savings.done": "• {name} · ✓ {amount}",
@@ -38,6 +44,11 @@ EN: dict[str, str] = {
     "home.typeHint": "Type <code>50000 lunch</code> to record.",
     "home.loadError": "❌ Couldn't load Home.",
 
+    "home.btn.pay": "💳 Pay · {name}",
+    "home.btn.putIn": "📥 Put in · {name}",
+    "home.btn.putInMore": "📥 Put in more · {name}",
+    "home.btn.give": "🤲 Give",
+    "home.btn.giveMore": "🤲 Give more",
     "home.btn.add": "➕ Add",
     "home.btn.wallets": "👛 Wallets",
     "home.btn.app": "🌐 Open app",
@@ -63,6 +74,11 @@ UZ: dict[str, str] = {
     "home.paceRunsOut": "⚠️ Soʻnggi paytda kuniga ~{pace} → shu surʼatda pulingiz taxminan {date} kuni tugaydi",
     "home.paceOk": "✅ Soʻnggi paytda kuniga ~{pace} — chegaradan oshmayapsiz.",
     "home.short": "⚠️ <b>{date} kuni {amount} yetmay qoladi</b> — hech narsa sarflamasangiz ham.",
+    "home.overPace": "⚠️ <b>Shu surʼatda pulingiz {date} kuni tugaydi</b>",
+    "home.cause.goals": "Rejalaringiz {until} gacha {goals} oladi. Ularsiz kuniga ~{amount} sarflashingiz mumkin edi.",
+    "home.cause.savings": "Ajratadigan pulingiz {until} gacha {savings} oladi. Usiz: kuniga ~{amount}.",
+    "home.cause.pace": "Kuniga taxminan {pace} sarflayapsiz. Hech narsa ajratmasangiz ham kuniga ~{amount} ga joy bor.",
+    "home.toReach": "{until} gacha yetishi uchun: kuniga <b>~{amount}</b>.",
     "home.noIncome": "Oylik daromadingizni kiriting — har kuni qancha sarflash mumkinligini koʻrsataman.",
 
     "home.upcoming.title": "<b>Yaqin toʻlovlar</b>",
@@ -73,7 +89,7 @@ UZ: dict[str, str] = {
     "home.upcoming.repayFast": "tez qaytarish",
     "home.upcoming.recorded": "✓ yozilgan",
 
-    "home.savings.title": "<b>Shu oydagi jamgʻarmalar</b>",
+    "home.savings.title": "<b>Shu oy ajratiladigan pul</b>",
     "home.savings.row": "• {name} · {target} dan {paid}",
     "home.savings.carried": "shu jumladan {month} dan qolgan {amount}",
     "home.savings.done": "• {name} · ✓ {amount}",
@@ -90,6 +106,11 @@ UZ: dict[str, str] = {
     "home.typeHint": "Yozish uchun <code>50000 tushlik</code> deb yuboring.",
     "home.loadError": "❌ Bosh sahifani yuklab boʻlmadi.",
 
+    "home.btn.pay": "💳 Toʻlash · {name}",
+    "home.btn.putIn": "📥 Jamgʻarish · {name}",
+    "home.btn.putInMore": "📥 Yana jamgʻarish · {name}",
+    "home.btn.give": "🤲 Xayriya qilish",
+    "home.btn.giveMore": "🤲 Yana xayriya qilish",
     "home.btn.add": "➕ Qoʻshish",
     "home.btn.wallets": "👛 Hamyonlar",
     "home.btn.app": "🌐 Ilovani ochish",

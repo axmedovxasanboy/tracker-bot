@@ -1,4 +1,5 @@
-"""🧾 History: the month in three figures, Where it went, the list, one transaction, edit, delete.
+"""🧾 History: the month's figures (In · Out · Saved · Given), Where it went, the list (a move between
+wallets and a day's wallet check are one line each), one transaction, edit, delete.
 
 `history.*`
 
@@ -11,8 +12,10 @@ EN: dict[str, str] = {
     "history.in": "In: <b>{amount}</b>",
     "history.out": "Out: <b>{amount}</b>",
     "history.saved": "Saved: <b>{amount}</b>",
+    "history.given": "Given: <b>{amount}</b>",
     "history.borrowed": "Borrowed: {amount}",
     "history.lent": "Lent: {amount}",
+    "history.returned": "Paid back to you: {amount}",
     "history.fromSavings": "From savings: {amount}",
     "history.whereItWent": "<b>Where it went</b>",
     "history.spendRow": "• {name} · {amount}",
@@ -25,6 +28,14 @@ EN: dict[str, str] = {
     "history.dayToday": "Today · {date}",
     "history.dayYesterday": "Yesterday · {date}",
     "history.row": "{n}. {amount} · {title}",
+    "history.moveRow": "{n}. ⇄ Moved money · {source} → {target} · {amount}",
+    "history.moveTitle": "Moved money · {source} → {target}",
+    "history.checkRow": "{n}. ✅ Wallet check · {words}",
+    "history.checkNotItemised": "{amount} not itemised",
+    "history.checkMore": "{amount} more than expected",
+    "history.checkSpent": "Wallet check · not itemised",
+    "history.checkFound": "Wallet check · more than expected",
+    "history.checkTitle": "✅ <b>Wallet check · {date}</b>",
     "history.searchBtn": "🔎 Search",
     "history.clearSearchBtn": "✖️ Clear search",
     "history.searchAsk": "🔎 <b>Search {month}</b>\n\nSend a word — a description, a note, a category or a card.",
@@ -47,16 +58,16 @@ EN: dict[str, str] = {
 
     # Kinds a transaction can be (cmp.subType.*)
     "history.kind.loanReceived": "Borrowed",
-    "history.kind.loanReturned": "Lent money returned",
+    "history.kind.loanReturned": "Paid back to you",
     "history.kind.loanGiven": "Lent",
-    "history.kind.loanRepayment": "Loan repayment",
+    "history.kind.loanRepayment": "Loan payment",
     "history.kind.bankLoanPayment": "Bank loan payment",
     "history.kind.investment": "Investment",
     "history.kind.donation": "Donation",
     "history.kind.emergency": "Emergency fund",
     "history.kind.investmentWithdrawal": "From savings",
-    "history.kind.everyday": "Found by a wallet check",
-    "history.kind.transfer": "Move between your wallets",
+    "history.kind.everyday": "Wallet check",
+    "history.kind.transfer": "Moved money",
 
     # Delete
     "history.deleteAsk": "🗑 <b>Delete this transaction?</b>",
@@ -100,8 +111,10 @@ UZ: dict[str, str] = {
     "history.in": "Kirim: <b>{amount}</b>",
     "history.out": "Chiqim: <b>{amount}</b>",
     "history.saved": "Jamgʻarildi: <b>{amount}</b>",
+    "history.given": "Xayriya: <b>{amount}</b>",
     "history.borrowed": "Qarz olindi: {amount}",
     "history.lent": "Qarz berildi: {amount}",
+    "history.returned": "Sizga qaytarildi: {amount}",
     "history.fromSavings": "Jamgʻarmadan: {amount}",
     "history.whereItWent": "<b>Pul qayerga ketdi</b>",
     "history.spendRow": "• {name} · {amount}",
@@ -114,6 +127,14 @@ UZ: dict[str, str] = {
     "history.dayToday": "Bugun · {date}",
     "history.dayYesterday": "Kecha · {date}",
     "history.row": "{n}. {amount} · {title}",
+    "history.moveRow": "{n}. ⇄ Pul oʻtkazildi · {source} → {target} · {amount}",
+    "history.moveTitle": "Pul oʻtkazildi · {source} → {target}",
+    "history.checkRow": "{n}. ✅ Hamyon tekshiruvi · {words}",
+    "history.checkNotItemised": "{amount} tafsilotsiz",
+    "history.checkMore": "kutilgandan {amount} koʻp",
+    "history.checkSpent": "Hamyon tekshiruvi · tafsilotsiz",
+    "history.checkFound": "Hamyon tekshiruvi · kutilgandan koʻp",
+    "history.checkTitle": "✅ <b>Hamyon tekshiruvi · {date}</b>",
     "history.searchBtn": "🔎 Qidirish",
     "history.clearSearchBtn": "✖️ Qidiruvni tozalash",
     "history.searchAsk": "🔎 <b>{month}: qidirish</b>\n\nSoʻz yuboring — tavsif, izoh, kategoriya yoki karta.",
@@ -134,7 +155,7 @@ UZ: dict[str, str] = {
     "history.gone": "Bu tranzaksiya endi yoʻq.",
 
     "history.kind.loanReceived": "Olingan",
-    "history.kind.loanReturned": "Berilgan qarz qaytarildi",
+    "history.kind.loanReturned": "Sizga qaytarildi",
     "history.kind.loanGiven": "Berilgan",
     "history.kind.loanRepayment": "Qarz toʻlovi",
     "history.kind.bankLoanPayment": "Bank krediti toʻlovi",
@@ -142,8 +163,8 @@ UZ: dict[str, str] = {
     "history.kind.donation": "Xayriya",
     "history.kind.emergency": "Favqulodda jamgʻarma",
     "history.kind.investmentWithdrawal": "Jamgʻarmadan",
-    "history.kind.everyday": "Hamyon tekshiruvida topilgan",
-    "history.kind.transfer": "Oʻz hamyonlaringiz orasida oʻtkazma",
+    "history.kind.everyday": "Hamyon tekshiruvi",
+    "history.kind.transfer": "Pul oʻtkazildi",
 
     "history.deleteAsk": "🗑 <b>Bu tranzaksiya oʻchirilsinmi?</b>",
     "history.deleteTransfer": "Oʻtkazmaning ikkala tomoni ham oʻchiriladi.",

@@ -4,11 +4,16 @@ One month at a time (‹ Aug 2026 · Oct 2026 ›, never past this month), built
 transaction dated in the month comes down (`GET /transactions`, all pages of 100) and every figure
 is added up from exactly those rows.
 
-* **In · Out · Saved** with the web's `flowOf` rules: borrowed money, money taken out of savings
-  and money lent are their own lines; moves between wallets and loans paid back to the owner are
-  skipped; a wallet check's surplus comes back off Out.
+* **In · Out · Saved · Given**, by each row's `flow` — the server's one classification (see
+  `flow`): donations are Given, never Saved; borrowed money, money lent, money paid back to the
+  owner and money taken out of savings are their own lines; moves between wallets are not
+  counted; what a wallet check found extra comes back off Out. A server from before the field is
+  read by the old sub-type rule, in the same vocabulary.
 * **Where it went** — Out by top-level category, the six largest, the rest as "Other".
-* **The list** — 10 a page, newest first, grouped by day. A number button opens one transaction:
+* **The list** — 10 a page, newest first, grouped by day. A move between wallets is one line
+  ("Moved money · A → B", its two rows share a `transferPairId`) and a day's wallet check is one
+  line ("Wallet check · X not itemised"); a check of several wallets opens on its rows, so every
+  underlying row is still reachable. A number button opens one transaction:
   Edit (amount, category, wallet, date, description — plain income and expenses only, as the web
   keeps a special entry's kind) and Delete (asks first). The category follows the web's edit form:
   a category with sub-categories needs one of them — only a row already on the category itself
@@ -61,7 +66,8 @@ _DATE_CHOICES = 7
 
 _YM = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 REGULAR = ("REGULAR_INCOME", "REGULAR_EXPENSE")
-SAVING_SUB_TYPES = frozenset({"DONATION", "EMERGENCY_CONTRIBUTION", "INVESTMENT", "STOCK_PURCHASE"})
+TRANSFERS = ("TRANSFER_IN", "TRANSFER_OUT")
+WALLET_CHECK = "EVERYDAY_SPENDING"  # what a wallet check (or a cash check) books
 _KIND = {
     "LOAN_RECEIVED": "history.kind.loanReceived",
     "LOAN_RETURNED_TO_ME": "history.kind.loanReturned",
@@ -159,38 +165,45 @@ async def _categories(chat_id: int, **params) -> list[dict]:
     return [c for c in cats if isinstance(c, dict)]
 
 
-# ── What each row counts as (the web's flowOf) ──────────────────────────────
-def flow_of(tx: dict) -> str:
-    sub = tx.get("subType")
-    if tx.get("transferPairId") is not None or sub in ("TRANSFER_IN", "TRANSFER_OUT"):
-        return "skip"
+# ── What each row counts as ─────────────────────────────────────────────────
+# `TransactionResponse.flow` → the line of the summary it adds to. CORRECTION (a wallet check that
+# found more than expected) comes off Out; TRANSFER (between the owner's own wallets) counts nowhere.
+_LINE = {"EARNED": "in", "EVERYDAY": "out", "BILL": "out", "LOAN_PAYMENT": "out", "CORRECTION": "correction",
+         "SAVED": "saved", "GIVEN": "given", "BORROWED": "borrowed", "LENT": "lent", "RETURNED": "returned",
+         "FROM_SAVINGS": "fromSavings", "TRANSFER": None}
+# A server from before `flow`: the same classes, from the type and the sub-type.
+_INCOME_FLOW = {"LOAN_RECEIVED": "BORROWED", "INVESTMENT_WITHDRAWAL": "FROM_SAVINGS", WALLET_CHECK: "CORRECTION",
+                "LOAN_RETURNED_TO_ME": "RETURNED"}
+_EXPENSE_FLOW = {"LOAN_GIVEN": "LENT", "DONATION": "GIVEN", "EMERGENCY_CONTRIBUTION": "SAVED", "INVESTMENT": "SAVED",
+                 "STOCK_PURCHASE": "SAVED", "LOAN_REPAYMENT": "LOAN_PAYMENT", "BANK_LOAN_PAYMENT": "LOAN_PAYMENT"}
+
+
+def is_transfer(tx: dict) -> bool:
+    return tx.get("transferPairId") is not None or tx.get("subType") in TRANSFERS
+
+
+def flow(tx: dict) -> str:
+    """The row's class: the server's `flow`, else (an older server) worked out from the sub-type."""
+    value = tx.get("flow")
+    if value in _LINE:
+        return value
+    if is_transfer(tx):
+        return "TRANSFER"
     if tx.get("type") == "INCOME":
-        if sub == "LOAN_RECEIVED":
-            return "borrowed"
-        if sub == "INVESTMENT_WITHDRAWAL":
-            return "fromSavings"
-        if sub == "EVERYDAY_SPENDING":
-            return "surplus"
-        if sub == "LOAN_RETURNED_TO_ME":
-            return "skip"
-        return "in"
-    if sub == "LOAN_GIVEN":
-        return "lent"
-    if sub in SAVING_SUB_TYPES:
-        return "saved"
-    return "out"
+        return _INCOME_FLOW.get(tx.get("subType"), "EARNED")
+    return _EXPENSE_FLOW.get(tx.get("subType"), "EVERYDAY")
 
 
 def totals(rows: list[dict]) -> dict[str, float]:
-    out = dict.fromkeys(("in", "out", "saved", "borrowed", "lent", "fromSavings"), 0.0)
+    out = dict.fromkeys(("in", "out", "saved", "given", "borrowed", "lent", "returned", "fromSavings"), 0.0)
     for tx in rows:
         if tx.get("currency", CURRENCY) != CURRENCY:
             continue  # a dormant foreign cash pot never enters a total
-        flow, amount = flow_of(tx), n(tx.get("amount"))
-        if flow == "surplus":
+        line, amount = _LINE[flow(tx)], n(tx.get("amount"))
+        if line == "correction":
             out["out"] -= amount
-        elif flow in out:
-            out[flow] += amount
+        elif line is not None:
+            out[line] += amount
     return {k: round(v, 2) for k, v in out.items()}
 
 
@@ -202,27 +215,27 @@ def spending(rows: list[dict], roots: list[dict]) -> tuple[list[tuple[dict, floa
         root_of[root.get("id")] = root
         for child in root.get("children") or []:
             root_of[child.get("id")] = root
-        if root.get("applicableSubType") == "EVERYDAY_SPENDING":
+        if root.get("applicableSubType") == WALLET_CHECK:
             everyday_root = root.get("id")
     by_root: dict[Any, list] = {}
     uncategorised = surplus = everyday_uncategorised = 0.0
     for tx in rows:
         if tx.get("currency", CURRENCY) != CURRENCY:
             continue
-        flow, amount = flow_of(tx), n(tx.get("amount"))
-        if flow == "surplus":
+        line, amount = _LINE[flow(tx)], n(tx.get("amount"))
+        if line == "correction":
             surplus += amount
             continue
-        if flow != "out":
+        if line != "out":
             continue
         c = tx.get("category")
         if not isinstance(c, dict):
             uncategorised += amount
-            if tx.get("subType") == "EVERYDAY_SPENDING":
+            if tx.get("subType") == WALLET_CHECK:
                 everyday_uncategorised += amount
             continue
         root = root_of.get(c.get("id")) or root_of.get(c.get("parentId")) or c
-        if tx.get("subType") == "EVERYDAY_SPENDING":
+        if tx.get("subType") == WALLET_CHECK:
             everyday_root = root.get("id")
         entry = by_root.setdefault(root.get("id"), [root, 0.0])
         entry[1] += amount
@@ -259,11 +272,50 @@ def signed(tx: dict, amount: float | None = None, unit: bool = False) -> str:
     return ("+" if _is_income(tx) else "−") + (fmt_money(value) if unit else fmt_num(value))
 
 
+def _wallet_of(chat_id: int | None, tx: dict) -> str:
+    card = tx.get("card") if isinstance(tx.get("card"), dict) else None
+    return str(card.get("name") or "—") if card and card.get("type") != "CASH" else t(chat_id, "common.cash")
+
+
+def _other_side(chat_id: int | None, tx: dict) -> str:
+    """The wallet on the other end of a move, from the note the server writes on each of its rows
+    ("Transfer to Cash" / "Transfer from MinCon") — all there is when only one row is on hand."""
+    note = str(tx.get("note") or "")
+    for prefix in ("Transfer to ", "Transfer from "):
+        if note.startswith(prefix) and note[len(prefix):].strip():
+            name = note[len(prefix):].strip()
+            return t(chat_id, "common.cash") if name.lower() == "cash" else name
+    return "—"
+
+
+def move_ends(chat_id: int | None, rows: list[dict]) -> tuple[str, str]:
+    """(from, to) of a move between wallets, given one or both of its rows."""
+    out = next((tx for tx in rows if not _is_income(tx)), None)
+    into = next((tx for tx in rows if _is_income(tx)), None)
+    source = _wallet_of(chat_id, out) if out else _other_side(chat_id, into)
+    target = _wallet_of(chat_id, into) if into else _other_side(chat_id, out)
+    return source, target
+
+
+def _own_words(tx: dict) -> str:
+    """The description, unless it is one of the server's stock lines for a wallet check."""
+    desc = str(tx.get("description") or "").strip()
+    stock = desc.startswith("Everyday spending (") or "surplus" in desc.lower() or desc.startswith("Cash found (")
+    return "" if stock else desc
+
+
 def _title(chat_id: int | None, tx: dict) -> str:
+    """What a row is called. Moves and wallet checks are named here, in the owner's language —
+    the stored text ("Balance transfer", "Everyday spending (wallet check-in)") is the server's."""
+    if is_transfer(tx):
+        source, target = move_ends(chat_id, [tx])
+        return t(chat_id, "history.moveTitle", source=source, target=target)
+    if tx.get("subType") == WALLET_CHECK and not _own_words(tx):
+        return t(chat_id, "history.checkFound" if _is_income(tx) else "history.checkSpent")
     desc = str(tx.get("description") or "").strip()
     if not desc and isinstance(tx.get("category"), dict):
         desc = cat_name(chat_id, tx["category"])
-    return home.clip(desc or "—", _TITLE_LIMIT)
+    return desc or "—"
 
 
 def day_header(chat_id: int | None, iso: str) -> str:
@@ -281,27 +333,74 @@ def day_header(chat_id: int | None, iso: str) -> str:
     return f"<i>{text}</i>"
 
 
+def list_items(rows: list[dict]) -> list[dict]:
+    """The rows as the list shows them, in their order: a move between wallets is one item (its rows
+    share a `transferPairId`), a day's wallet-check rows are one item, every other row is its own."""
+    items: list[dict] = []
+    open_items: dict[Any, dict] = {}
+    for tx in rows:
+        date = str(tx.get("transactionDate") or "")[:10]
+        if is_transfer(tx):
+            pair = tx.get("transferPairId")
+            key, kind = ("move", pair if pair is not None else f"tx{tx.get('id')}"), "move"
+        elif tx.get("subType") == WALLET_CHECK and not _own_words(tx):
+            key, kind = ("check", date), "check"
+        else:
+            items.append({"kind": "row", "date": date, "rows": [tx]})
+            continue
+        item = open_items.get(key)
+        if item is None:
+            item = open_items[key] = {"kind": kind, "date": date, "rows": []}
+            items.append(item)
+        item["rows"].append(tx)
+    return items
+
+
+def check_net(rows: list[dict], portion: Callable[[dict], float] | None = None) -> float:
+    """What a wallet check left not itemised: spending found, less what was found extra."""
+    return round(sum((-1 if _is_income(tx) else 1) * (portion(tx) if portion else n(tx.get("amount")))
+                     for tx in rows), 2)
+
+
+def _check_words(chat_id: int | None, net: float) -> str:
+    return (t(chat_id, "history.checkMore", amount=fmt_money(-net)) if net < 0
+            else t(chat_id, "history.checkNotItemised", amount=fmt_money(net)))
+
+
 def list_block(chat_id: int | None, rows: list[dict], start: int, origin: str,
                portion: Callable[[dict], float] | None = None) -> tuple[list[str], list[list[tuple[str, str]]]]:
-    """Numbered rows grouped by day, and the number buttons that open each one."""
+    """Numbered lines grouped by day (see `list_items`), and the number buttons that open each."""
     lines: list[str] = []
     buttons: list[tuple[str, str]] = []
     day = None
-    for i, tx in enumerate(rows, start=start + 1):
-        date = str(tx.get("transactionDate") or "")[:10]
+    for i, item in enumerate(list_items(rows), start=start + 1):
+        date, group = item["date"], item["rows"]
+        tx = group[0]
         if date != day:
             day = date
             lines.append(day_header(chat_id, date))
-        line = t(chat_id, "history.row", n=i, amount=signed(tx, portion(tx) if portion else None),
-                 title=esc(_title(chat_id, tx)))
-        salary_month = str(tx.get("salaryMonth") or "")[:7]
-        if record.valid_month(salary_month) and salary_month != date[:7]:
-            line += " " + t(chat_id, "history.forMonth", month=ui.month_text(chat_id, salary_month))
-        cat = tx.get("category")
-        if isinstance(cat, dict) and str(tx.get("description") or "").strip():
-            line += f" · <i>{esc(home.clip(cat_name(chat_id, cat), 20))}</i>"
+        opens = f"hist:t:{tx.get('id')}:{origin}"
+        if item["kind"] == "move":
+            source, target = move_ends(chat_id, group)
+            spender = next((r for r in group if not _is_income(r)), tx)  # its detail deletes both sides
+            line = t(chat_id, "history.moveRow", n=i, source=esc(home.clip(source, 16)),
+                     target=esc(home.clip(target, 16)), amount=fmt_num(portion(tx) if portion else n(tx.get("amount"))))
+            opens = f"hist:t:{spender.get('id')}:{origin}"
+        elif item["kind"] == "check":
+            line = t(chat_id, "history.checkRow", n=i, words=_check_words(chat_id, check_net(group, portion)))
+            if len(group) > 1:
+                opens = f"hist:g:{tx.get('id')}:{origin}"  # its wallets, one row each
+        else:
+            line = t(chat_id, "history.row", n=i, amount=signed(tx, portion(tx) if portion else None),
+                     title=esc(home.clip(_title(chat_id, tx), _TITLE_LIMIT)))
+            salary_month = str(tx.get("salaryMonth") or "")[:7]
+            if record.valid_month(salary_month) and salary_month != date[:7]:
+                line += " " + t(chat_id, "history.forMonth", month=ui.month_text(chat_id, salary_month))
+            cat = tx.get("category")
+            if isinstance(cat, dict) and str(tx.get("description") or "").strip():
+                line += f" · <i>{esc(home.clip(cat_name(chat_id, cat), 20))}</i>"
         lines.append(line)
-        buttons.append((str(i), f"hist:t:{tx.get('id')}:{origin}"))
+        buttons.append((str(i), opens))
     return lines, ui.grid(buttons, 5)
 
 
@@ -347,10 +446,12 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
         lines += ["", t(chat_id, "history.in", amount=fmt_money(tot["in"])),
                   t(chat_id, "history.out", amount=fmt_money(max(0.0, tot["out"]))),
                   t(chat_id, "history.saved", amount=fmt_money(tot["saved"]))]
-        for key, flow in (("history.borrowed", "borrowed"), ("history.lent", "lent"),
-                          ("history.fromSavings", "fromSavings")):
-            if tot[flow] > 0:
-                lines.append(t(chat_id, key, amount=fmt_money(tot[flow])))
+        if tot["given"] > 0:
+            lines.append(t(chat_id, "history.given", amount=fmt_money(tot["given"])))
+        for key, line in (("history.borrowed", "borrowed"), ("history.lent", "lent"),
+                          ("history.returned", "returned"), ("history.fromSavings", "fromSavings")):
+            if tot[line] > 0:
+                lines.append(t(chat_id, key, amount=fmt_money(tot[line])))
         top, other = spending(rows, roots)
         lines += ["", t(chat_id, "history.whereItWent")]
         if not top and other <= 0:
@@ -360,7 +461,9 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
         if other > 0:
             lines.append(t(chat_id, "history.spendRow", name=t(chat_id, "history.other"), amount=fmt_num(other)))
 
-        visible = [tx for tx in rows if matches(tx, query)] if query else rows
+        # The search looks at the rows; the list then shows them merged (a merged line appears when
+        # any of its rows matched) and is paged by what it shows.
+        visible = list_items([tx for tx in rows if matches(tx, query)] if query else rows)
         pages = max(1, math.ceil(len(visible) / PAGE))
         page = min(max(page, 0), pages - 1)
         chunk = visible[page * PAGE:(page + 1) * PAGE]
@@ -373,7 +476,7 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
         if not chunk:
             lines.append(t(chat_id, "history.noneFound"))
         origin = f"{month}.{page}" + (".s" if query else "")
-        block, buttons = list_block(chat_id, chunk, page * PAGE, origin)
+        block, buttons = list_block(chat_id, [tx for item in chunk for tx in item["rows"]], page * PAGE, origin)
         lines += block
         kb += buttons
         flag = ":s" if query else ""
@@ -492,7 +595,7 @@ def detail_text(chat_id: int | None, tx: dict) -> str:
     lines = [t(chat_id, "history.detailTitle"), "",
              t(chat_id, "history.detailAmount", amount=signed(tx, unit=True),
                type=t(chat_id, "history.typeIncome" if _is_income(tx) else "history.typeExpense")),
-             esc(tx.get("description") or "—"), "",
+             esc(_title(chat_id, tx)), "",
              t(chat_id, "history.detailDate", date=_long_date(chat_id, tx.get("transactionDate")))]
     cat = tx.get("category")
     if isinstance(cat, dict):
@@ -564,6 +667,47 @@ async def on_detail(cb: CallbackQuery, state: FSMContext) -> None:
     await show_detail(cb, state, *ref)
 
 
+# ── One wallet check, wallet by wallet ──────────────────────────────────────
+@router.callback_query(F.data.startswith("hist:g:"))
+async def on_check_group(cb: CallbackQuery, state: FSMContext) -> None:
+    """`hist:g:{id}:{origin}` — the day's wallet check that row `id` belongs to: one line per wallet,
+    each opening its own transaction (they stay separately editable and deletable)."""
+    await common.ack(cb)
+    if not await common.gate(cb):
+        return
+    ref = _split_ref(cb.data)
+    if ref is None:
+        await show_month(cb, state, clock.month())
+        return
+    await state.set_state(None)
+    chat_id = common.chat_id_of(cb)
+    tx = await _load_tx(cb, ref[0])
+    if tx is None:
+        return
+    date = str(tx.get("transactionDate") or "")[:10]
+    try:
+        res = await api.request(chat_id, "GET", "/transactions", params={
+            "page": 0, "size": _FETCH_SIZE, "sortBy": "transactionDate", "sortDir": "desc",
+            "startDate": date, "endDate": date}) or {}
+    except Exception as exc:  # noqa: BLE001
+        await home.report(cb, exc)
+        return
+    rows = [r for r in res.get("content") or [] if isinstance(r, dict) and r.get("subType") == WALLET_CHECK
+            and not _own_words(r) and r.get("currency", CURRENCY) == CURRENCY]
+    if len(rows) < 2:
+        await show_detail(cb, state, *ref)
+        return
+    lines = [t(chat_id, "history.checkTitle", date=_long_date(chat_id, date)),
+             _check_words(chat_id, check_net(rows)), ""]
+    buttons = []
+    for i, r in enumerate(rows, start=1):
+        lines.append(t(chat_id, "history.row", n=i, amount=signed(r), title=esc(_wallet_of(chat_id, r))))
+        buttons.append((str(i), f"hist:t:{r.get('id')}:{ref[1]}"))
+    await common.show(cb, "\n".join(lines), ikb([*ui.grid(buttons, 5),
+                                                 [(t(chat_id, "common.back"), back_callback(ref[1])),
+                                                  (t(chat_id, "common.home"), "home")]]))
+
+
 # ── Delete ──────────────────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("hist:d:"))
 async def on_delete(cb: CallbackQuery, state: FSMContext) -> None:
@@ -579,7 +723,7 @@ async def on_delete(cb: CallbackQuery, state: FSMContext) -> None:
     if tx is None:
         return
     lines = [t(chat_id, "history.deleteAsk"), "",
-             f"<b>{signed(tx, unit=True)}</b> · {esc(_title(chat_id, tx))}",
+             f"<b>{signed(tx, unit=True)}</b> · {esc(home.clip(_title(chat_id, tx), _TITLE_LIMIT))}",
              t(chat_id, "history.detailDate", date=_long_date(chat_id, tx.get("transactionDate")))]
     if tx.get("transferPairId") is not None:
         lines += ["", t(chat_id, "history.deleteTransfer")]

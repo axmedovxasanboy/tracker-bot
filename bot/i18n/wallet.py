@@ -1,5 +1,6 @@
-"""👛 Wallets: balances, a wallet's transactions, Add card, Edit / Delete a card, Add money,
-Cash you hold now, Move money, and Check wallets (the wallet check-in).
+"""👛 Wallets: balances, a wallet's transactions, New card, Edit / Delete a card, Move money (and
+"Move money here" on a card), Check cash, and Check wallets. What a check finds is "not itemised"
+spending, or "more than expected" — never a check-in, a reconciliation or a surplus.
 
 `wallet.*` — the web's words (tracker-frontend `page.cards.*`, `shell.wallets.*`,
 `cmp.balanceTransfer.*`).
@@ -11,12 +12,11 @@ EN: dict[str, str] = {
     "wallet.checkBtn": "✅ Check wallets",
 
     "wallet.checkTitle": "✅ <b>Check wallets · {date}</b>",
-    "wallet.checkIntro": ("Type what is really in each wallet now. Any gap from the app’s figure is "
-                          "saved as everyday spending."),
-    "wallet.soFar": "Everyday spending found by checks this month: {amount}",
+    "wallet.checkIntro": "Type what is really in each wallet now. Any gap from the app’s figure is recorded as spending, not itemised.",
+    "wallet.soFar": "Found by checks this month, not itemised: {amount}",
     "wallet.startBtn": "▶️ Start",
     "wallet.locked": "This month can’t be changed any more.",
-    "wallet.none": "You have no wallets yet — add a card first.",
+    "wallet.none": "You have no wallets yet — create a card first.",
     "wallet.step": "✅ <b>Check wallets</b> · {index} of {total}",
     "wallet.appSays": "The app says: {amount}",
     "wallet.ask": "How much is really in it now? Send a number ({currency}).",
@@ -26,21 +26,20 @@ EN: dict[str, str] = {
     "wallet.tapButton": "Tap a button below.",
     "wallet.reviewTitle": "✅ <b>Check wallets · {date}</b>",
     "wallet.reviewRow": "• {name}: <b>{amount}</b>",
-    "wallet.willSpend": "Will be saved as everyday spending: <b>{amount}</b>",
-    "wallet.willSurplus": "You have <b>{amount}</b> more than the app thought — saved as a surplus.",
+    "wallet.willSpend": "Will be recorded as spending, not itemised: <b>{amount}</b>",
+    "wallet.willSurplus": "You have <b>{amount}</b> more than expected — it comes off this month’s spending.",
     "wallet.willMatch": "Everything matches the app — nothing to add.",
     "wallet.fixBtn": "✏️ {name}",
     "wallet.saveBtn": "✅ Save",
-    "wallet.savedSpent": "✅ Wallets checked — {amount} saved as everyday spending.",
-    "wallet.savedSurplus": "✅ Wallets checked — {amount} more than the app thought.",
+    "wallet.savedSpent": "✅ Wallets checked — {amount} recorded, not itemised.",
+    "wallet.savedSurplus": "✅ Wallets checked — {amount} more than expected.",
     "wallet.savedMatch": "✅ Wallets checked — everything matched.",
 
     # The screen's buttons
-    "wallet.addCardBtn": "➕ Add card",
+    "wallet.addCardBtn": "➕ New card",
     "wallet.moveBtn": "⇄ Move money",
-    "wallet.topUpBtn": "➕ Add money",
-    "wallet.updateCashBtn": "💵 Cash you hold now",
-    "wallet.addCashBtn": "➕ Add cash",
+    "wallet.topUpBtn": "⇄ Move money here",
+    "wallet.updateCashBtn": "💵 Check cash",
     "wallet.walletBtn": "{icon} {name}",
     "wallet.tapHint": "Tap a wallet to see its transactions.",
 
@@ -51,32 +50,30 @@ EN: dict[str, str] = {
     "wallet.cardTxSubtitle": "<i>Transactions · showing the card portion</i>",
     "wallet.noCardTx": "No transactions for this card yet",
     "wallet.cashTitle": "💵 <b>Cash</b>",
-    "wallet.startingAmount": "starting {amount}",
     "wallet.cashTxSubtitle": "<i>Transactions · showing the cash portion</i>",
     "wallet.noCashTx": "No cash transactions yet",
     "wallet.cashEmptyHint": "Tell Tracker how much cash you hold. Cash transactions adjust it automatically.",
     "wallet.pageOf": "Page {page} of {total}",
     "wallet.cardGone": "That card is gone.",
 
-    # Update cash
-    "wallet.cashModalTitle": "💵 <b>Cash balance</b>",
+    # Check cash, the first time: there is no cash pot yet, so this sets what is held
+    "wallet.cashModalTitle": "💵 <b>Check cash</b>",
     "wallet.cashHoldLabel": "Cash you currently hold ({currency})",
     "wallet.cashHoldHint": ("<i>The current cash balance is this starting amount, adjusted by every cash "
                             "transaction recorded since.</i>"),
     "wallet.cashAsk": "Send the figure, e.g. <code>250000</code>.",
-    "wallet.cashSaved": "✅ Cash balance updated",
+    "wallet.cashSaved": "✅ Cash checked",
 
-    # Cash you hold now
-    "wallet.cashNowTitle": "💵 <b>Cash you hold now</b>",
+    # Check cash
     "wallet.cashAppThinks": "App thinks: <b>{amount}</b>",
     "wallet.cashNowAsk": "How much cash do you hold right now? Send a number ({currency}).",
     "wallet.cashYouHold": "You hold: <b>{amount}</b>",
-    "wallet.cashWillSpend": "<b>{amount}</b> will be recorded as everyday spending.",
-    "wallet.cashWillFind": "<b>{amount}</b> will be recorded as found money.",
+    "wallet.cashWillSpend": "<b>{amount}</b> will be recorded as spending, not itemised.",
+    "wallet.cashWillFind": "<b>{amount}</b> more than expected — it comes off this month’s spending.",
     "wallet.cashMatches": "Matches — nothing to record.",
-    "wallet.cashSavedSpent": "✅ Cash updated — {amount} recorded as everyday spending.",
-    "wallet.cashSavedFound": "✅ Cash updated — {amount} recorded as found money.",
-    "wallet.cashSavedMatch": "✅ Cash matches — nothing recorded.",
+    "wallet.cashSavedSpent": "✅ Cash checked — {amount} recorded, not itemised.",
+    "wallet.cashSavedFound": "✅ Cash checked — {amount} more than expected.",
+    "wallet.cashSavedMatch": "✅ Cash checked — it matches.",
 
     # Edit / delete a card
     "wallet.editCardBtn": "✏️ Edit",
@@ -121,9 +118,9 @@ EN: dict[str, str] = {
     "wallet.createBtn": "✅ Create",
     "wallet.cardCreated": "✅ Card created",
 
-    # Move money / Add money
+    # Move money / Move money here
     "wallet.moveTitle": "⇄ <b>Move money</b>",
-    "wallet.topUpTitle": "➕ <b>Add money · {name}</b>",
+    "wallet.topUpTitle": "⇄ <b>Move money to {name}</b>",
     "wallet.askFrom": "From which wallet?",
     "wallet.askTo": "To which wallet?",
     "wallet.pickRow": "{icon} {name} · {amount}",
@@ -131,9 +128,9 @@ EN: dict[str, str] = {
     "wallet.askAmount": "How much? Send the amount.",
     "wallet.overBalance": "⚠️ More than is on {name} ({amount}).",
     "wallet.reviewMove": "Move <b>{amount}</b>\n{source} → {target}",
-    "wallet.transferBtn": "✅ Transfer",
-    "wallet.moved": "✅ Transferred {amount} successfully",
-    "wallet.needTwo": "You need at least two wallets to move money — add a card or your cash first.",
+    "wallet.transferBtn": "✅ Move money",
+    "wallet.moved": "✅ Moved {amount}",
+    "wallet.needTwo": "You need at least two wallets to move money — create a card or check your cash first.",
     "wallet.cashToCash": "Pick a card on at least one side — cash to cash moves nothing.",
 }
 
@@ -143,12 +140,11 @@ UZ: dict[str, str] = {
     "wallet.checkBtn": "✅ Hamyonlarni tekshirish",
 
     "wallet.checkTitle": "✅ <b>Hamyonlarni tekshirish · {date}</b>",
-    "wallet.checkIntro": ("Har bir hamyonda hozir aslida qancha borligini kiriting. Ilova hisobidan "
-                          "farqi kundalik xarajat sifatida saqlanadi."),
-    "wallet.soFar": "Shu oy tekshiruvlarda topilgan kundalik xarajat: {amount}",
+    "wallet.checkIntro": "Har bir hamyonda hozir aslida qancha borligini kiriting. Ilova hisobidan farqi tafsilotsiz xarajat sifatida yoziladi.",
+    "wallet.soFar": "Shu oy tekshiruvlarda topilgan tafsilotsiz xarajat: {amount}",
     "wallet.startBtn": "▶️ Boshlash",
     "wallet.locked": "Bu oyni endi oʻzgartirib boʻlmaydi.",
-    "wallet.none": "Hali hamyonlaringiz yoʻq — avval karta qoʻshing.",
+    "wallet.none": "Hali hamyonlaringiz yoʻq — avval karta yarating.",
     "wallet.step": "✅ <b>Hamyonlarni tekshirish</b> · {total} dan {index}",
     "wallet.appSays": "Ilova hisobi: {amount}",
     "wallet.ask": "Hozir unda aslida qancha bor? Son yuboring ({currency}).",
@@ -158,20 +154,19 @@ UZ: dict[str, str] = {
     "wallet.tapButton": "Pastdagi tugmani bosing.",
     "wallet.reviewTitle": "✅ <b>Hamyonlarni tekshirish · {date}</b>",
     "wallet.reviewRow": "• {name}: <b>{amount}</b>",
-    "wallet.willSpend": "Kundalik xarajat sifatida saqlanadi: <b>{amount}</b>",
-    "wallet.willSurplus": "Ilova hisoblaganidan <b>{amount}</b> koʻp — ortiqcha sifatida saqlanadi.",
+    "wallet.willSpend": "Tafsilotsiz xarajat sifatida yoziladi: <b>{amount}</b>",
+    "wallet.willSurplus": "Kutilganidan <b>{amount}</b> koʻp — u shu oyning xarajatidan ayriladi.",
     "wallet.willMatch": "Hammasi ilova bilan mos — qoʻshiladigan narsa yoʻq.",
     "wallet.fixBtn": "✏️ {name}",
     "wallet.saveBtn": "✅ Saqlash",
-    "wallet.savedSpent": "✅ Hamyonlar tekshirildi — {amount} kundalik xarajat sifatida saqlandi.",
-    "wallet.savedSurplus": "✅ Hamyonlar tekshirildi — ilova hisoblaganidan {amount} koʻp.",
+    "wallet.savedSpent": "✅ Hamyonlar tekshirildi — {amount} tafsilotsiz xarajat sifatida yozildi.",
+    "wallet.savedSurplus": "✅ Hamyonlar tekshirildi — kutilganidan {amount} koʻp.",
     "wallet.savedMatch": "✅ Hamyonlar tekshirildi — hammasi mos.",
 
-    "wallet.addCardBtn": "➕ Karta qoʻshish",
+    "wallet.addCardBtn": "➕ Yangi karta",
     "wallet.moveBtn": "⇄ Pul oʻtkazish",
-    "wallet.topUpBtn": "➕ Pul qoʻshish",
-    "wallet.updateCashBtn": "💵 Hozir qoʻlingizdagi naqd",
-    "wallet.addCashBtn": "➕ Naqd pul qoʻshish",
+    "wallet.topUpBtn": "⇄ Shu yerga pul oʻtkazish",
+    "wallet.updateCashBtn": "💵 Naqd pulni tekshirish",
     "wallet.walletBtn": "{icon} {name}",
     "wallet.tapHint": "Tranzaksiyalarini koʻrish uchun hamyonni bosing.",
 
@@ -181,30 +176,28 @@ UZ: dict[str, str] = {
     "wallet.cardTxSubtitle": "<i>Tranzaksiyalar · karta qismi koʻrsatilmoqda</i>",
     "wallet.noCardTx": "Bu karta uchun hali tranzaksiya yoʻq",
     "wallet.cashTitle": "💵 <b>Naqd pul</b>",
-    "wallet.startingAmount": "boshlangʻich {amount}",
     "wallet.cashTxSubtitle": "<i>Tranzaksiyalar · naqd qismi koʻrsatilmoqda</i>",
     "wallet.noCashTx": "Hali naqd tranzaksiya yoʻq",
     "wallet.cashEmptyHint": "Trackerga qancha naqd pulingiz borligini ayting. Naqd tranzaksiyalar uni avtomatik moslashtiradi.",
     "wallet.pageOf": "{page}-sahifa, jami {total}",
     "wallet.cardGone": "Bu karta endi yoʻq.",
 
-    "wallet.cashModalTitle": "💵 <b>Naqd pul balansi</b>",
+    "wallet.cashModalTitle": "💵 <b>Naqd pulni tekshirish</b>",
     "wallet.cashHoldLabel": "Hozir qoʻlingizdagi naqd pul ({currency})",
     "wallet.cashHoldHint": ("<i>Joriy naqd pul balansi shu boshlangʻich summa, undan keyin yozilgan har bir "
                             "naqd tranzaksiya bilan moslashtirilgan.</i>"),
     "wallet.cashAsk": "Summani yuboring, masalan <code>250000</code>.",
-    "wallet.cashSaved": "✅ Naqd pul balansi yangilandi",
+    "wallet.cashSaved": "✅ Naqd pul tekshirildi",
 
-    "wallet.cashNowTitle": "💵 <b>Hozir qoʻlingizdagi naqd pul</b>",
     "wallet.cashAppThinks": "Ilova hisobi: <b>{amount}</b>",
     "wallet.cashNowAsk": "Hozir qoʻlingizda qancha naqd pul bor? Raqam yuboring ({currency}).",
     "wallet.cashYouHold": "Qoʻlingizda: <b>{amount}</b>",
-    "wallet.cashWillSpend": "<b>{amount}</b> kundalik xarajat sifatida yoziladi.",
-    "wallet.cashWillFind": "<b>{amount}</b> topilgan pul sifatida yoziladi.",
+    "wallet.cashWillSpend": "<b>{amount}</b> tafsilotsiz xarajat sifatida yoziladi.",
+    "wallet.cashWillFind": "Kutilganidan <b>{amount}</b> koʻp — u shu oyning xarajatidan ayriladi.",
     "wallet.cashMatches": "Mos keladi — yoziladigan narsa yoʻq.",
-    "wallet.cashSavedSpent": "✅ Naqd pul yangilandi — {amount} kundalik xarajat sifatida yozildi.",
-    "wallet.cashSavedFound": "✅ Naqd pul yangilandi — {amount} topilgan pul sifatida yozildi.",
-    "wallet.cashSavedMatch": "✅ Naqd pul mos — hech narsa yozilmadi.",
+    "wallet.cashSavedSpent": "✅ Naqd pul tekshirildi — {amount} tafsilotsiz xarajat sifatida yozildi.",
+    "wallet.cashSavedFound": "✅ Naqd pul tekshirildi — kutilganidan {amount} koʻp.",
+    "wallet.cashSavedMatch": "✅ Naqd pul tekshirildi — mos keladi.",
 
     "wallet.editCardBtn": "✏️ Tahrirlash",
     "wallet.deleteCardBtn": "🗑 Oʻchirish",
@@ -248,7 +241,7 @@ UZ: dict[str, str] = {
     "wallet.cardCreated": "✅ Karta yaratildi",
 
     "wallet.moveTitle": "⇄ <b>Pul oʻtkazish</b>",
-    "wallet.topUpTitle": "➕ <b>Pul qoʻshish · {name}</b>",
+    "wallet.topUpTitle": "⇄ <b>{name} ga pul oʻtkazish</b>",
     "wallet.askFrom": "Qaysi hamyondan?",
     "wallet.askTo": "Qaysi hamyonga?",
     "wallet.pickRow": "{icon} {name} · {amount}",
@@ -256,8 +249,8 @@ UZ: dict[str, str] = {
     "wallet.askAmount": "Qancha? Summani yuboring.",
     "wallet.overBalance": "⚠️ {name} dagidan koʻp ({amount}).",
     "wallet.reviewMove": "<b>{amount}</b> oʻtkaziladi\n{source} → {target}",
-    "wallet.transferBtn": "✅ Oʻtkazish",
-    "wallet.moved": "✅ {amount} muvaffaqiyatli oʻtkazildi",
-    "wallet.needTwo": "Pul oʻtkazish uchun kamida ikkita hamyon kerak — avval karta yoki naqd pul qoʻshing.",
+    "wallet.transferBtn": "✅ Pul oʻtkazish",
+    "wallet.moved": "✅ {amount} oʻtkazildi",
+    "wallet.needTwo": "Pul oʻtkazish uchun kamida ikkita hamyon kerak — avval karta yarating yoki naqd pulni tekshiring.",
     "wallet.cashToCash": "Kamida bir tomonda karta tanlang — naqddan naqdga oʻtkazish hech narsani oʻzgartirmaydi.",
 }
