@@ -4,8 +4,9 @@
    the savings rule is what it is, and next month's rule when it changes;
 2. the savings rule's percentages;
 3. to set aside this month — percent × savings base = amount (and a month without a bonus);
-4. {Month} so far — the income the percentages apply to, and what was set aside against it;
-5. how it is worked out — the two ladders.
+4. {Month} so far — the salary, avans and bonus recorded, and what was set aside;
+5. how it is worked out — the two ladders. The savings base is the monthly income from Settings
+   plus this month's bonus: recording the salary never moves the targets, only a bonus does.
 
 Callbacks owned here: `prof`.
 """
@@ -145,7 +146,7 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     if isinstance(income, dict) or isinstance(allocated, dict):
         lines += ["", t(chat_id, "profile.soFar", month=history.month_name(chat_id, month))]
     if isinstance(income, dict):
-        # Only what the percentages apply to — salary, avans, bonus (the owner's call on the web).
+        # The lines the server marks `inBase` — salary, avans, bonus (the owner's call on the web).
         in_base = sorted((line for line in income.get("lines") or []
                           if isinstance(line, dict) and line.get("inBase") is not False),
                          key=lambda line: -n(line.get("amount")))
@@ -195,15 +196,22 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
         else:
             lines.append(t(chat_id, "profile.levelResult", n=level))
     lines += ["", t(chat_id, "profile.baseLadder")]
-    if parts:
-        if parts.get("usesStableIncome"):
-            lines.append(_rung(chat_id, " ", t(chat_id, "profile.incomeUntilSalary"), parts.get("stableIncome")))
-            if n(parts.get("bonus")) > 0:
-                lines.append(_rung(chat_id, "+", t(chat_id, "profile.bonus"), parts.get("bonus")))
-        else:
-            ladder = sorted((x for x in parts.get("lines") or [] if isinstance(x, dict)), key=lambda x: -n(x.get("amount")))
-            for i, x in enumerate(ladder):
-                lines.append(_rung(chat_id, "+" if i else " ", esc(cat_name(chat_id, x)), x.get("amount")))
+    from_settings = bool(parts and parts.get("usesStableIncome"))
+    if from_settings:
+        # The base is the monthly income from Settings plus this month's bonus: recording the salary
+        # or an avans never moves it. The lines are the bonus by category — shown one by one when
+        # they add up to it, else (none sent, or a server whose lines still carry the salary) as one.
+        lines.append(_rung(chat_id, " ", t(chat_id, "profile.incomeFromSettings"), parts.get("stableIncome")))
+        bonus_lines = [x for x in parts.get("lines") or [] if isinstance(x, dict) and n(x.get("amount")) > 0]
+        if bonus_lines and abs(sum(n(x.get("amount")) for x in bonus_lines) - n(parts.get("bonus"))) < 1:
+            lines += [_rung(chat_id, "+", esc(cat_name(chat_id, x)), x.get("amount")) for x in bonus_lines]
+        elif n(parts.get("bonus")) > 0:
+            lines.append(_rung(chat_id, "+", t(chat_id, "profile.bonus"), parts.get("bonus")))
+    elif parts:
+        # An older server: the base is the salary received, and it sends those lines.
+        ladder = sorted((x for x in parts.get("lines") or [] if isinstance(x, dict)), key=lambda x: -n(x.get("amount")))
+        for i, x in enumerate(ladder):
+            lines.append(_rung(chat_id, "+" if i else " ", esc(cat_name(chat_id, x)), x.get("amount")))
     else:
         # An older server still builds the base from what is left after bills and loans.
         lines += [_rung(chat_id, " ", t(chat_id, "profile.afterBills"), p.get("leftAfterBills")),
@@ -212,6 +220,8 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
         if n(p.get("bonusThisMonth")) > 0:
             lines.append(_rung(chat_id, "+", t(chat_id, "profile.bonus"), p.get("bonusThisMonth")))
     lines.append("<b>" + _rung(chat_id, "=", t(chat_id, "profile.base"), p.get("savingsBase")) + "</b>")
+    if from_settings:
+        lines.append(t(chat_id, "profile.salaryNote"))
     return lines
 
 
