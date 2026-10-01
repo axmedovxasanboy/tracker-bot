@@ -17,7 +17,7 @@ key, or an Uzbek confirmation that has silently lost its {amount}.
 import re
 from types import ModuleType
 
-from . import auth, common, history, home, loans, pay, profile, record, savings, system, wallet
+from . import auth, common, history, home, levels, loans, pay, profile, record, savings, system, wallet
 
 EN = "en"
 UZ = "uz"
@@ -37,6 +37,7 @@ _AREAS: tuple[tuple[ModuleType, tuple[str, ...]], ...] = (
     (savings, ("savings.",)),
     (loans, ("loans.",)),
     (profile, ("profile.",)),
+    (levels, ("levels.",)),
 )
 
 # `{name}` — the only templating the strings use. Deliberately \w+ so that stray braces in

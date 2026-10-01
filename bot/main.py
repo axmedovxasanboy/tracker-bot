@@ -33,7 +33,7 @@ from .config import (BOT_TOKEN, OWNER_CHAT_ID, REMINDERS_ENABLED, WEB_VIEW_URL,
                      WEBHOOK_PORT, WEBHOOK_SECRET)
 from .i18n import system as system_strings
 from .i18n import t
-from .routers import auth, history, home, loans, pay, profile, record, savings, settings, wallets
+from .routers import auth, history, home, levels, loans, pay, profile, record, savings, settings, wallets
 from .states import Record
 
 # The reminder loop is optional by construction: it is the one part of the bot that sends
@@ -249,7 +249,7 @@ def main() -> None:
     # in a bare text handler that answers anything typed and a catch-all for old buttons; a
     # router after it would never see an update again. In between, state filters keep the
     # routers unambiguous.
-    for r in (router, auth.router, settings.router, home.router, pay.router, wallets.router,
+    for r in (router, auth.router, settings.router, levels.router, home.router, pay.router, wallets.router,
               history.router, savings.router, loans.router, profile.router,
               record.router):
         dp.include_router(r)

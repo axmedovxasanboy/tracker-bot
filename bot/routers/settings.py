@@ -2,7 +2,14 @@
 Tracker counts from (read-only), the Danger Zone, help and lock.
 
 The income is here because the backend refuses every money write until it is set, and the guard
-that says so (on recording) needs a way through that works from the phone.
+that says so (on recording) needs a way through that works from the phone. It is a value per month
+(STABLE-INCOME-HISTORY.md): a changed amount asks "From which month?" — buttons from the first month
+that can hold one to two months ahead, this month marked — and is sent with `stableIncomeFrom`, so
+the months before it keep their targets. The first time (no history yet) does not ask, and neither
+does a server that sends no `stableIncomeHistory`: the amount is then saved as it always was. With
+more than one entry the screen lists them, newest first.
+
+**Savings rules** (`routers/levels.py`) — a button here, only where the server keeps levels.
 
 **Categories** (the web's Categories page): Expense / Income lists, one category's screen with its
 sub-categories, Add (name in English, an optional Uzbek name, the type), Rename, Add sub-category
@@ -18,6 +25,7 @@ Callbacks owned here: `set`, `set:*`, `lang:*`, `cat`, `cat:*`.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from aiogram import F, Router
@@ -26,13 +34,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from .. import api, common, keyboards, ui
+from .. import api, clock, common, keyboards, ui
 from ..i18n import cat_name, get_lang, set_lang, t
 from ..keyboards import esc, ikb
 from ..money import fmt_money, parse_amount
 from ..session import store
 from ..states import Settings
-from . import history, home
+from . import history, home, levels
 
 router = Router(name="settings")
 log = logging.getLogger(__name__)
@@ -61,21 +69,29 @@ def _error(chat_id: int, exc: api.ApiError) -> str:
 async def show_settings(event, notice: str | None = None) -> None:
     chat_id = common.chat_id_of(event)
     try:
-        s = await api.request(chat_id, "GET", "/settings") or {}
+        s, rules = await asyncio.gather(
+            api.request(chat_id, "GET", "/settings", params={"date": clock.today_iso()}), levels.fetch(chat_id))
     except Exception as exc:  # noqa: BLE001
         await home.report(event, exc)
         return
+    s = s or {}
     income = home.n(s.get("monthlyStableIncome"))
     other = "uz" if get_lang(chat_id) == "en" else "en"
     lines = [notice, ""] if notice else []
     lines += [t(chat_id, "settings.title"), "",
               t(chat_id, "settings.income", amount=fmt_money(income) if income else t(chat_id, "settings.notSet"))]
+    entries = income_history(s)
+    if entries and len(entries) > 1:
+        lines.append("<i>" + " · ".join(t(chat_id, "settings.incomeFrom", amount=fmt_money(home.n(e.get("amount"))),
+                                           month=_month(chat_id, e["month"])) for e in reversed(entries)) + "</i>")
     start = str(s.get("allocationTrackingStartMonth") or "")[:7]
     lines.append(t(chat_id, "settings.countingFrom", month=history.month_label(chat_id, start))
                  if history.valid_month(start) else t(chat_id, "settings.countingNotSet"))
     await common.show(event, "\n".join(lines), ikb([
         [(t(chat_id, "settings.langBtn"), f"lang:{other}"), (t(chat_id, "settings.incomeBtn"), "set:income")],
         [(t(chat_id, "settings.categoriesBtn"), "cat"), (t(chat_id, "settings.dangerBtn"), "set:danger")],
+        # Savings rules only where the server keeps them (`GET /levels`; a 404 leaves this screen as it was).
+        [(t(chat_id, "levels.btn.rules"), "lvl")] if rules is not None else [],
         [(t(chat_id, "settings.helpBtn"), "sys:help"), (t(chat_id, "settings.lockBtn"), "lock")],
         ui.nav(chat_id, back="more", home=True),
     ]))
@@ -115,13 +131,52 @@ async def on_lang(cb: CallbackQuery) -> None:
 
 
 # ── Monthly income ──────────────────────────────────────────────────────────
+# The income per month (STABLE-INCOME-HISTORY.md §1): read here and nowhere else.
+def income_history(s: dict) -> list[dict] | None:
+    """`stableIncomeHistory`, oldest first; None from a server that keeps one income for every month."""
+    entries = s.get("stableIncomeHistory") if isinstance(s, dict) else None
+    if not isinstance(entries, list):
+        return None
+    return [e for e in entries if isinstance(e, dict) and history.valid_month(str(e.get("month") or "")[:7])]
+
+
+def income_months(s: dict) -> list[str]:
+    """What "From which month?" offers: the first month that can hold an entry (`stableIncomeFirstMonth`,
+    else the oldest entry, else this month) to two months after this one."""
+    now = clock.month()
+    entries = income_history(s) or []
+    first = str(s.get("stableIncomeFirstMonth") or "")[:7]
+    if not history.valid_month(first):
+        first = str(entries[0]["month"])[:7] if entries else now
+    last = history.shift_month(now, 2)
+    months, month = [], min(first, now)
+    while month <= last:
+        months.append(month)
+        month = history.shift_month(month, 1)
+    return months
+
+
+def _month(chat_id: int, ym: str) -> str:
+    """`2026-10` → "Oct 2026"."""
+    return f"{ui.month_short(chat_id, ym)} {str(ym)[:4]}"
+
+
 @router.callback_query(F.data == "set:income")
 async def on_income(cb: CallbackQuery, state: FSMContext) -> None:
     await common.ack(cb)
     if not await common.gate(cb):
         return
     chat_id = common.chat_id_of(cb)
+    try:
+        s = await api.request(chat_id, "GET", "/settings", params={"date": clock.today_iso()}) or {}
+    except api.NeedsLogin:
+        await common.show(cb, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        return
+    except Exception:  # noqa: BLE001 — the amount can still be saved as it always was
+        s = {}
     await state.set_state(Settings.income)
+    await state.update_data(inc={"history": income_history(s), "months": income_months(s),
+                                 "current": home.n(s.get("monthlyStableIncome"))})
     await common.show(cb, f"{t(chat_id, 'settings.incomeTitle')}\n\n{t(chat_id, 'settings.incomeAsk')}",
                       ikb([ui.nav(chat_id, back="set", cancel="home")]))
 
@@ -136,19 +191,71 @@ async def on_income_typed(message: Message, state: FSMContext) -> None:
     if not await common.gate(message):
         await state.clear()
         return
+    inc = (await state.get_data()).get("inc") or {}
+    # Ask the month only for a change to an income that already has a history on a server that keeps
+    # one. The first time, or the same amount again, or an older server: saved as it always was.
+    if inc.get("history") and inc.get("months") and abs(amount - home.n(inc.get("current"))) >= 1:
+        await state.update_data(inc=dict(inc, amount=amount))
+        await _ask_month(message, state)
+        return
+    await _save_income(message, state, amount, None)
+
+
+async def _ask_month(event, state: FSMContext, error: str = "") -> None:
+    chat_id = common.chat_id_of(event)
+    inc = (await state.get_data()).get("inc") or {}
+    now = clock.month()
+    buttons = [(t(chat_id, "settings.incomeMonthNow", month=_month(chat_id, m)) if m == now else _month(chat_id, m),
+                f"set:if:{m}") for m in inc.get("months") or [now]]
+    lines = [t(chat_id, "settings.incomeFromAsk", amount=fmt_money(home.n(inc.get("amount")))),
+             t(chat_id, "settings.incomeFromHint")]
+    if error:
+        lines += ["", error]
+    await common.show(event, "\n".join(lines), ikb([*ui.grid(buttons, 3), ui.nav(chat_id, back="set:income", cancel="home")]))
+
+
+@router.callback_query(F.data.startswith("set:if:"))
+async def on_income_month(cb: CallbackQuery, state: FSMContext) -> None:
+    """`set:if:{YYYY-MM}` — the month the typed amount applies from."""
+    chat_id = common.chat_id_of(cb)
+    if not await common.gate(cb):
+        return
+    inc = (await state.get_data()).get("inc") or {}
+    month = cb.data.split(":", 2)[2]
+    if inc.get("amount") is None or month not in (inc.get("months") or []):
+        await common.ack(cb, t(chat_id, "common.oldButton"), alert=True)
+        await state.clear()
+        await show_settings(cb)
+        return
+    await common.ack(cb)
+    await _save_income(cb, state, home.n(inc["amount"]), month)
+
+
+async def _save_income(event, state: FSMContext, amount: float, month: str | None) -> None:
+    """`PUT /settings` — only the income (SettingsService.update writes solely what the request
+    carries), and `stableIncomeFrom` when a month was picked."""
+    chat_id = common.chat_id_of(event)
+    body: dict = {"monthlyStableIncome": amount}
+    if month:
+        body["stableIncomeFrom"] = month
+    if isinstance(event, CallbackQuery):
+        await common.begin_write(event, chat_id)
     try:
-        # Only the one field: SettingsService.update writes solely what the request carries.
-        await api.request(chat_id, "PUT", "/settings", json={"monthlyStableIncome": amount})
+        await api.request(chat_id, "PUT", "/settings", params={"date": clock.today_iso()}, json=body)
     except api.NeedsLogin:
         await state.clear()
-        await common.show(message, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
+        await common.show(event, t(chat_id, "common.sessionExpired"), keyboards.login_kb(chat_id))
         return
     except api.ApiError as exc:
-        # Still in the state, so the next number typed is another attempt.
-        await message.answer(_error(chat_id, exc))
+        if month:  # a month the server refuses: pick another (the amount is kept)
+            await _ask_month(event, state, _error(chat_id, exc))
+        else:      # still in the state, so the next number typed is another attempt
+            await common.show(event, _error(chat_id, exc))
         return
     await state.clear()
-    await home.show_home(message, t(chat_id, "settings.incomeSaved", amount=fmt_money(amount)))
+    notice = (t(chat_id, "settings.incomeSavedFrom", amount=fmt_money(amount), month=_month(chat_id, month)) if month
+              else t(chat_id, "settings.incomeSaved", amount=fmt_money(amount)))
+    await home.show_home(event, notice)
 
 
 # ── Categories ──────────────────────────────────────────────────────────────

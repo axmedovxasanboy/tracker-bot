@@ -57,6 +57,7 @@ EN: dict[str, str] = {
     # Settings
     "settings.title": "⚙️ <b>Settings</b>",
     "settings.income": "Monthly income: <b>{amount}</b>",
+    "settings.incomeFrom": "{amount} from {month}",
     "settings.notSet": "not set",
     "settings.countingFrom": "Counting from: <b>{month}</b> <i>(once set, this can’t be changed)</i>",
     "settings.countingNotSet": "Counting from: <i>not set yet</i>",
@@ -69,6 +70,10 @@ EN: dict[str, str] = {
     "settings.incomeTitle": "💰 <b>Monthly income</b>",
     "settings.incomeAsk": "Send your monthly stable income, e.g. <code>8000000</code> or <code>8m</code>.",
     "settings.incomeSaved": "✅ Monthly income saved: {amount}",
+    "settings.incomeSavedFrom": "✅ Monthly income saved: {amount} from {month}",
+    "settings.incomeFromAsk": "💰 <b>{amount} a month — from which month?</b>",
+    "settings.incomeFromHint": "Months before it keep their targets.",
+    "settings.incomeMonthNow": "✓ {month}",
 
     # Categories (Settings → Categories), the web's words.
     "settings.cat.title": "🏷 <b>Categories</b>",
@@ -169,6 +174,7 @@ UZ: dict[str, str] = {
 
     "settings.title": "⚙️ <b>Sozlamalar</b>",
     "settings.income": "Oylik daromad: <b>{amount}</b>",
+    "settings.incomeFrom": "{month} dan {amount}",
     "settings.notSet": "kiritilmagan",
     "settings.countingFrom": "Hisob boshlangan oy: <b>{month}</b> <i>(bir marta belgilangach, buni oʻzgartirib boʻlmaydi)</i>",
     "settings.countingNotSet": "Hisob boshlangan oy: <i>hali belgilanmagan</i>",
@@ -181,6 +187,10 @@ UZ: dict[str, str] = {
     "settings.incomeTitle": "💰 <b>Oylik daromad</b>",
     "settings.incomeAsk": "Oylik barqaror daromadingizni yuboring, masalan <code>8000000</code> yoki <code>8m</code>.",
     "settings.incomeSaved": "✅ Oylik daromad saqlandi: {amount}",
+    "settings.incomeSavedFrom": "✅ Oylik daromad saqlandi: {month} dan {amount}",
+    "settings.incomeFromAsk": "💰 <b>Oyiga {amount} — qaysi oydan boshlab?</b>",
+    "settings.incomeFromHint": "Undan oldingi oylarning maqsadlari oʻzgarmaydi.",
+    "settings.incomeMonthNow": "✓ {month}",
 
     "settings.cat.title": "🏷 <b>Kategoriyalar</b>",
     "settings.cat.intro": "Kategoriyalarni yaratish, nomini oʻzgartirish va guruhlash.",

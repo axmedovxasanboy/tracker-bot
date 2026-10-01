@@ -2,7 +2,9 @@
 
 1. one sentence — "This month: set aside X — P% of Y";
 2. the level — a whole number, never a sub-level — on its own line, with what is left after bills
-   and where the next level starts; next month's rule when it changes;
+   and where the next level starts; on Level 4 the road to Level 5 (pay of 60M or more three months
+   in a row), on Level 5 since when and how it ends (`levels.road_lines`); next month's rule when it
+   changes. A level change the bot has not shown yet comes first, once (`levels.take_notice`);
 3. the savings rule's percentages;
 4. to set aside this month — percent × what the percentages apply to (and a month without a bonus);
 5. {Month} so far — "Pay for {month}" (the salary, avans and bonus counted for it) and "Set aside
@@ -15,6 +17,8 @@ Callbacks owned here: `prof`.
 """
 from __future__ import annotations
 
+import asyncio
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -24,7 +28,7 @@ from ..i18n import cat_name, get_lang, t
 from ..keyboards import esc, ikb
 from ..money import fmt_money
 from ..session import store
-from . import history, home
+from . import history, home, levels
 
 router = Router(name="profile")
 
@@ -78,7 +82,9 @@ def _rung(chat_id: int | None, sign: str, label: str, amount) -> str:
     return t(chat_id, "profile.rung", sign=sign, label=label, amount=fmt_money(n(amount)))
 
 
-def compose(chat_id: int | None, p: dict) -> list[str]:
+def compose(chat_id: int | None, p: dict, rules: dict | None = None) -> list[str]:
+    """The message. `rules` is `GET /levels` (None from a server without it): it only says from
+    when the percentages in force apply."""
     lines: list[str] = []
     month = str(p.get("month") or clock.month())[:7]
     income, allocated = p.get("incomeThisMonth"), p.get("allocatedThisMonth")
@@ -102,8 +108,14 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
         quiet.append(t(chat_id, "profile.nextLevel", n=(level or 0) + 1, amount=fmt_money(n(nxt))))
     elif level is not None:
         quiet.append(t(chat_id, "profile.topLevel"))
-    lines += [t(chat_id, "profile.level", n=level) if level is not None else t(chat_id, "profile.noLevel"),
-              " · ".join(quiet)]
+    lines.append(t(chat_id, "profile.level", n=level) if level is not None else t(chat_id, "profile.noLevel"))
+    # Levels 4 and 5 (a server with levels): the road to Level 5, or how long it holds — instead of
+    # "Level n+1 at …". Levels 1–3, and an older server, read as before.
+    road = levels.road_lines(chat_id, p)
+    if road:
+        lines += [quiet[0]] + road
+    else:
+        lines.append(" · ".join(quiet))
     # Why the rule asks what it asks — said in "How it is worked out", at the end.
     rule = p.get("rule") if isinstance(p.get("rule"), dict) else {}
     cutoff = rule.get("cutoff")
@@ -128,6 +140,9 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
     # ── The rule ──
     buckets = _known(p.get("buckets"))
     lines += ["", t(chat_id, "profile.ruleTitle")]
+    situation = levels.rule_line(chat_id, p)  # "Level 1 · Bank loan — under 5 000 000 UZS left"
+    if situation:
+        lines.append(situation)
     for b in buckets:
         value = (f"{percent_text(chat_id, b.get('percent'))}%" if n(b.get("percent")) > 0
                  else t(chat_id, "profile.notThisMonth"))
@@ -206,7 +221,8 @@ def compose(chat_id: int | None, p: dict) -> list[str]:
                 lines.append("   <i>" + " · ".join(extra) + "</i>")
 
     # ── How it is worked out ──
-    lines += ["", t(chat_id, "profile.howTitle"), *why, t(chat_id, "profile.levelLadder"),
+    since = levels.rule_from_line(chat_id, p, rules)
+    lines += ["", t(chat_id, "profile.howTitle"), *why, *([since] if since else []), t(chat_id, "profile.levelLadder"),
               _rung(chat_id, " ", t(chat_id, "profile.income"), p.get("stableIncome")),
               _rung(chat_id, "−", t(chat_id, "profile.bills"), p.get("monthlyBills")),
               "<b>" + _rung(chat_id, "=", t(chat_id, "profile.afterBills"), p.get("leftAfterBills")) + "</b>"]
@@ -249,7 +265,9 @@ async def show_profile(event) -> None:
     chat_id = common.chat_id_of(event)
     nav = ui.nav(chat_id, back="more", home=True)
     try:
-        p = await api.request(chat_id, "GET", "/profile", params={"date": clock.today_iso()}) or {}
+        p, rules = await asyncio.gather(api.request(chat_id, "GET", "/profile", params={"date": clock.today_iso()}),
+                                        levels.fetch(chat_id))
+        p = p or {}
     except api.ApiError as exc:
         if exc.status == 404:  # a server from before this page
             await common.show(event, t(chat_id, "profile.outdated"), ikb([nav]))
@@ -262,11 +280,16 @@ async def show_profile(event) -> None:
     session = store.get(chat_id)
     name = p.get("username") or (session.username if session is not None else "") or "—"
     head = [t(chat_id, "profile.title", name=esc(name)), ""]
+    change = await levels.take_notice(chat_id, "prof")  # Level 5 started or ended — shown once
+    if change:
+        head += change[0] + [""]
+    top = change[1] if change else []
     if p.get("missingStableIncome"):
         await common.show(event, "\n".join(head + [t(chat_id, "profile.incomeTitle"), t(chat_id, "profile.incomeUnset")]),
-                          ikb([[(t(chat_id, "settings.incomeBtn"), "set:income")], nav]))
+                          ikb([*top, [(t(chat_id, "settings.incomeBtn"), "set:income")], nav]))
         return
-    await common.show(event, "\n".join(head + compose(chat_id, p)), ikb([
+    await common.show(event, "\n".join(head + compose(chat_id, p, rules)), ikb([
+        *top,
         [(t(chat_id, "profile.changeIncomeBtn"), "set:income"), (t(chat_id, "home.more.savings"), "sav")],
         nav,
     ]))

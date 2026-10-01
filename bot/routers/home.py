@@ -19,6 +19,7 @@ Callbacks owned here: `home`, `more`.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -247,17 +248,23 @@ async def report(event, exc: BaseException) -> None:
 
 
 async def show_home(event, notice: str | None = None) -> None:
-    """Render Home, with an optional one-line outcome ("✅ Saved …") above it."""
+    """Render Home, with an optional one-line outcome ("✅ Saved …") above it — and, once, a level
+    change the bot has not shown yet (Level 5 started or ended; see `levels.take_notice`)."""
+    from . import levels  # levels imports this module
     chat_id = common.chat_id_of(event)
     try:
-        data = await fetch(chat_id)
+        data, change = await asyncio.gather(fetch(chat_id), levels.take_notice(chat_id, "home"))
     except Exception as exc:  # noqa: BLE001 — dispatched by type in report()
         if notice:
             await common.show(event, notice, keyboards.back_home_kb(chat_id))
             return
         await report(event, exc)
         return
-    text, kb = compose(chat_id, data, notice=notice)
+    text, kb = compose(chat_id, data, header="\n".join(change[0]) if change else None, notice=notice)
+    if change:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            *[[InlineKeyboardButton(text=label, callback_data=cb) for label, cb in row] for row in change[1]],
+            *kb.inline_keyboard])
     await common.show(event, text, kb)
 
 
