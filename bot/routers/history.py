@@ -1,8 +1,11 @@
 """🧾 History — the web's History page in the bot.
 
-One month at a time (‹ Aug 2026 · Oct 2026 ›, never past this month), built the web's way: every
-transaction dated in the month comes down (`GET /transactions`, all pages of 100) and every figure
-is added up from exactly those rows.
+One month at a time (‹ Aug 2026 · Oct 2026 ›, never past next month — where pay marked for next
+month waits), built the web's way: every transaction of the month comes down (`GET /transactions`,
+all pages of 100) and every figure is added up from exactly those rows. "Of the month" is the
+accounting month: pay counts in the month it is for — September's salary received on 2 October is
+September's In and is listed in September, under its real day ("Received Fri 2 Oct · for
+September") — every other row in the month it is dated (see `fetch_month`).
 
 * **In · Out · Saved · Given**, by each row's `flow` — the server's one classification (see
   `flow`): donations are Given, never Saved; borrowed money, money lent, money paid back to the
@@ -19,8 +22,9 @@ is added up from exactly those rows.
   a category with sub-categories needs one of them — only a row already on the category itself
   may stay there — the one used last under it is ticked, its only one is taken as it is, and a
   category or sub-category can be created on the way (see `record.create_category`). Salary income
-  shows the month it is for (a tap cycles it, see `record.salary_months`); a salary row for another
-  month is tagged "(for September)" in the list.
+  shows the month it is for (a tap cycles it, see `record.salary_months`) and loses it when moved
+  to a category outside the salary's; a salary row for another month than the one it is listed in
+  is tagged "(for September)" in the list.
 * **🔎 Search** — asks for a word and filters the month, as the web's search box does.
 
 The list block and the transaction screens are shared with 👛 Wallets (a wallet's recent
@@ -131,13 +135,20 @@ def month_bounds(month: str) -> tuple[str, str]:
 
 # ── Loading ─────────────────────────────────────────────────────────────────
 async def fetch_month(chat_id: int, month: str) -> list[dict]:
-    """Every transaction dated in `month`, all pages of it, newest first."""
+    """Every transaction of `month` by accounting month, all pages of it, newest first.
+
+    `accountingMonth=true` over one whole month asks the server for the month as Profile, the
+    advisor and Analytics count it: the rows dated in it, less pay marked for another month, plus
+    pay for it dated in another (September's salary received on 2 October). Such a row keeps its
+    real date — it sorts and is listed under that day (see `list_block`). A server from before the
+    flag ignores it and sends the rows dated in the month, which are then shown as they always were;
+    the rows are never re-filtered here, so nothing can drop out of both months."""
     start, end = month_bounds(month)
 
     def page(i: int):
         return api.request(chat_id, "GET", "/transactions", params={
             "page": i, "size": _FETCH_SIZE, "sortBy": "transactionDate", "sortDir": "desc",
-            "startDate": start, "endDate": end})
+            "startDate": start, "endDate": end, "accountingMonth": "true"})
 
     first = await page(0) or {}
     pages = min(int(first.get("totalPages") or 1), _MAX_PAGES)
@@ -318,11 +329,19 @@ def _title(chat_id: int | None, tx: dict) -> str:
     return desc or "—"
 
 
-def day_header(chat_id: int | None, iso: str) -> str:
+def day_header(chat_id: int | None, iso: str, month: str | None = None) -> str:
+    """The day a run of rows is under. In a month's list (`month`) a day outside it is pay received
+    then for this month — "Received Fri 2 Oct · for September" — never a stray day of another month."""
     try:
         d = dt.date.fromisoformat(str(iso)[:10])
     except ValueError:
         return f"<i>{esc(iso)}</i>"
+    if month and clock.month_of(d) != month:
+        date = ui.day(chat_id, d, weekday=True)
+        if d.year != int(month[:4]):  # January's advance received on 29 December: that December's year
+            date += f" {d.year}"
+        return "<i>" + t(chat_id, "history.dayReceived", date=date,
+                         month=ui.month_text(chat_id, month)) + "</i>"
     today = clock.today()
     if d == today:
         text = t(chat_id, "history.dayToday", date=ui.day(chat_id, d))
@@ -368,8 +387,12 @@ def _check_words(chat_id: int | None, net: float) -> str:
 
 
 def list_block(chat_id: int | None, rows: list[dict], start: int, origin: str,
-               portion: Callable[[dict], float] | None = None) -> tuple[list[str], list[list[tuple[str, str]]]]:
-    """Numbered lines grouped by day (see `list_items`), and the number buttons that open each."""
+               portion: Callable[[dict], float] | None = None,
+               month: str | None = None) -> tuple[list[str], list[list[tuple[str, str]]]]:
+    """Numbered lines grouped by day (see `list_items`), and the number buttons that open each.
+
+    `month`: the month a History list is of (by accounting month, see `fetch_month`), so a row
+    dated outside it is pay for it and says when it came; a wallet's list (None) is by real date."""
     lines: list[str] = []
     buttons: list[tuple[str, str]] = []
     day = None
@@ -378,7 +401,7 @@ def list_block(chat_id: int | None, rows: list[dict], start: int, origin: str,
         tx = group[0]
         if date != day:
             day = date
-            lines.append(day_header(chat_id, date))
+            lines.append(day_header(chat_id, date, month))
         opens = f"hist:t:{tx.get('id')}:{origin}"
         if item["kind"] == "move":
             source, target = move_ends(chat_id, group)
@@ -393,8 +416,10 @@ def list_block(chat_id: int | None, rows: list[dict], start: int, origin: str,
         else:
             line = t(chat_id, "history.row", n=i, amount=signed(tx, portion(tx) if portion else None),
                      title=esc(home.clip(_title(chat_id, tx), _TITLE_LIMIT)))
+            # Tagged when it is for another month than the one it is listed in: in History that is the
+            # month on screen (pay for it received in another month says so in its day line instead).
             salary_month = str(tx.get("salaryMonth") or "")[:7]
-            if record.valid_month(salary_month) and salary_month != date[:7]:
+            if record.valid_month(salary_month) and salary_month != (month or date[:7]):
                 line += " " + t(chat_id, "history.forMonth", month=ui.month_text(chat_id, salary_month))
             cat = tx.get("category")
             if isinstance(cat, dict) and str(tx.get("description") or "").strip():
@@ -423,7 +448,10 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
                      notice: str | None = None) -> None:
     chat_id = common.chat_id_of(event)
     this_month = clock.month()
-    if not valid_month(month) or month > this_month:
+    # Up to next month: nothing is dated ahead of today's, but pay marked for next month (October's
+    # advance received on 29 September) counts — and is listed — there and in no other month.
+    last_month = shift_month(this_month, 1)
+    if not valid_month(month) or month > last_month:
         month = this_month
     d = await state.get_data()
     query = str(d.get("hist_q") or "").strip() if search else ""
@@ -476,7 +504,8 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
         if not chunk:
             lines.append(t(chat_id, "history.noneFound"))
         origin = f"{month}.{page}" + (".s" if query else "")
-        block, buttons = list_block(chat_id, [tx for item in chunk for tx in item["rows"]], page * PAGE, origin)
+        block, buttons = list_block(chat_id, [tx for item in chunk for tx in item["rows"]], page * PAGE, origin,
+                                    month=month)
         lines += block
         kb += buttons
         flag = ":s" if query else ""
@@ -488,7 +517,7 @@ async def show_month(event, state: FSMContext, month: str, page: int = 0, search
         kb.append(pager)
 
     months = [("‹ " + month_label(chat_id, shift_month(month, -1)), f"hist:m:{shift_month(month, -1)}:0")]
-    if month < this_month:  # nothing is recorded ahead of today's month
+    if month < last_month:
         months.append((month_label(chat_id, shift_month(month, 1)) + " ›", f"hist:m:{shift_month(month, 1)}:0"))
     kb.append(months)
     if query:
@@ -592,11 +621,18 @@ async def _load_tx(event, tx_id: str) -> dict | None:
 
 
 def detail_text(chat_id: int | None, tx: dict) -> str:
+    date = str(tx.get("transactionDate") or "")
+    pay_month = str(tx.get("salaryMonth") or "")[:7]
+    pay_month = pay_month if record.valid_month(pay_month) else ""
+    # Pay for another month than it came in: the date is when it was received, the "For" line below
+    # the month it counts in.
+    received = bool(pay_month) and pay_month != date[:7]
     lines = [t(chat_id, "history.detailTitle"), "",
              t(chat_id, "history.detailAmount", amount=signed(tx, unit=True),
                type=t(chat_id, "history.typeIncome" if _is_income(tx) else "history.typeExpense")),
              esc(_title(chat_id, tx)), "",
-             t(chat_id, "history.detailDate", date=_long_date(chat_id, tx.get("transactionDate")))]
+             t(chat_id, "history.detailReceived" if received else "history.detailDate",
+               date=_long_date(chat_id, date))]
     cat = tx.get("category")
     if isinstance(cat, dict):
         lines.append(t(chat_id, "history.detailCategory", name=esc(cat_name(chat_id, cat))))
@@ -612,8 +648,8 @@ def detail_text(chat_id: int | None, tx: dict) -> str:
         lines.append(t(chat_id, "history.detailCard", name=esc(_card_label(card))))
     else:
         lines.append(t(chat_id, "history.detailCash"))
-    if record.valid_month(str(tx.get("salaryMonth") or "")[:7]):
-        lines.append(t(chat_id, "record.card.salaryFor", month=ui.month_text(chat_id, str(tx["salaryMonth"])[:7])))
+    if pay_month:
+        lines.append(t(chat_id, "record.card.salaryFor", month=ui.month_text(chat_id, pay_month)))
     if tx.get("note"):
         lines.append(t(chat_id, "history.detailNote", note=esc(tx["note"])))
     return "\n".join(lines)
@@ -1259,8 +1295,11 @@ async def on_edit_desc_typed(message: Message, state: FSMContext) -> None:
 
 
 # Save
-def edit_payload(he: dict, salary: bool = False) -> dict:
-    """The web's edit request: the kind, the stored links and the note ride along unchanged."""
+def edit_payload(he: dict, salary: bool | None = None) -> dict:
+    """The web's edit request: the kind, the stored links and the note ride along unchanged.
+
+    `salary`: whether the row is the salary's income (`_is_salary`); None when that cannot be told
+    (the category tree did not load), and the stored month is then kept as it is."""
     amount = float(he["amount"])
     card = he.get("card")
     body: dict = {
@@ -1278,6 +1317,10 @@ def edit_payload(he: dict, salary: bool = False) -> dict:
         body["investmentId"] = he["investmentId"]
     if salary and he.get("smChanged") and he.get("salaryMonth"):
         body["salaryMonth"] = he["salaryMonth"]  # left out, the server keeps the stored month
+    elif salary is False and he.get("smKnown") and he.get("salaryMonth"):
+        # Moved off the salary's categories (to Gift, say): only salary income is for a month. Left
+        # out, the server would keep it and the row would go on counting in that month; null clears it.
+        body["salaryMonth"] = None
     return body
 
 
@@ -1299,7 +1342,9 @@ async def on_edit_save(cb: CallbackQuery, state: FSMContext) -> None:
         return
     await common.begin_write(cb, chat_id)
     try:
-        salary = _is_salary(he, (await state.get_data()).get("he_roots"))
+        roots = (await state.get_data()).get("he_roots") or []
+        # No salary categories in hand (the tree did not load): it cannot be told, the month is kept.
+        salary = _is_salary(he, roots) if record.salary_tree(roots) else None
         await api.request(chat_id, "PUT", f"/transactions/{he['id']}", json=edit_payload(he, salary))
     except api.NeedsLogin:
         await state.clear()
