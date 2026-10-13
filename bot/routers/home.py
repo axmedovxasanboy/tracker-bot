@@ -1,11 +1,12 @@
 """Home — the pocket advisor, built from `GET /advisor` (the same answer the web Home renders).
 
-Top to bottom, mirroring the web: the date; the daily figure in one of the server's three states
-(`daily.verdict`: OK — "You can spend X a day"; OVER_PACE — "At your pace, money runs out on …",
-the cause in one sentence, then what reaching the end would take; SHORT — "You'll be short"); what
-is coming up; what to set aside this month (a row asks for this month's target plus whatever
-earlier months left unpaid — its `carried`); what the owner has. A server from before `verdict`
-gets the two lines it always had.
+Top to bottom, mirroring the web: the date; what is free to spend until the tightest day and about
+how much a day, with the recent pace beside it (SHORT instead — "You'll be short" — when even
+spending nothing leaves a bill, a loan payment or a set-aside unmet); one line when the plans ask
+more than a normal month has (the plans are never in the figure, since 13 Oct 2026); what is coming
+up; what to set aside this month (a row asks for this month's target plus whatever earlier months
+left unpaid — its `carried`); what the owner has. A server without the breakdown gets the per-day
+line it always had.
 Buttons sit only where the web puts one — this month's rows that are still open: Pay for a bill or
 a loan, Put in for savings, Give for the donation — and at most `_MAX_PAY` of them. The bottom rows are the
 three things the bot is for: record (➕ Add, or just type "50000 lunch"), pay, check wallets.
@@ -127,23 +128,38 @@ def savings_button(chat_id: int | None, row: dict, more: bool = False) -> str:
     return clip(t(chat_id, "home.btn.putInMore" if more else "home.btn.putIn", name=savings_name(chat_id, row)), 34)
 
 
-def _over_pace(chat_id: int | None, daily: dict) -> list[str]:
-    """OVER_PACE: the date the money runs out at the owner's real pace, the cause, and the way out."""
-    breakdown = daily.get("breakdown") if isinstance(daily.get("breakdown"), dict) else {}
-    until = ui.day(chat_id, daily.get("until"))
-    lines = [t(chat_id, "home.overPace", date=ui.day(chat_id, daily.get("runsOutOn")))]
-    cause = daily.get("cause")
-    if cause == "GOALS" and daily.get("safePerDayNoGoals") is not None and breakdown.get("goals") is not None:
-        lines.append(t(chat_id, "home.cause.goals", goals=fmt_money(n(breakdown["goals"])), until=until,
-                       amount=fmt_money(n(daily["safePerDayNoGoals"]))))
-    elif cause == "SAVINGS" and daily.get("safePerDayNoSavings") is not None and breakdown.get("savings") is not None:
-        lines.append(t(chat_id, "home.cause.savings", savings=fmt_money(n(breakdown["savings"])), until=until,
-                       amount=fmt_money(n(daily["safePerDayNoSavings"]))))
-    elif cause == "PACE" and daily.get("safePerDayNoSavings") is not None and daily.get("paceDaily") is not None:
-        lines.append(t(chat_id, "home.cause.pace", pace=fmt_money(n(daily["paceDaily"])),
-                       amount=fmt_money(n(daily["safePerDayNoSavings"]))))
-    lines.append(t(chat_id, "home.toReach", until=until, amount=fmt_money(n(daily.get("safePerDay")))))
+def _free(chat_id: int | None, daily: dict) -> list[str]:
+    """What is free to spend until the tightest day (the breakdown's window), about how much a day,
+    and whether the recent pace keeps inside it — OK and OVER_PACE alike; the pace line says which."""
+    safe = n(daily.get("safePerDay"))
+    breakdown = daily.get("breakdown") if isinstance(daily.get("breakdown"), dict) else None
+    if breakdown is None:
+        lines = [t(chat_id, "home.perDay", amount=fmt_money(safe), date=ui.day(chat_id, daily.get("until")))]
+    else:
+        free = fmt_money(max(0.0, n(breakdown.get("net"))))
+        lines = [t(chat_id, "home.freeToday", amount=free) if n(breakdown.get("days")) <= 1
+                 else t(chat_id, "home.free", date=ui.day(chat_id, daily.get("tightestOn")), amount=free,
+                        perDay=fmt_money(safe)),
+                 t(chat_id, "home.freeAfter")]
+    pace = daily.get("paceDaily")
+    if daily.get("runsOutOn") and pace is not None:
+        lines.append(t(chat_id, "home.paceRunsOut", pace=fmt_money(n(pace)),
+                       date=ui.day(chat_id, daily.get("runsOutOn"))))
+    elif pace is not None and n(pace) <= safe:
+        lines.append(t(chat_id, "home.paceOk", pace=fmt_money(n(pace))))
     return lines
+
+
+def _plans_note(chat_id: int | None, data: dict) -> str | None:
+    """The plans, when they ask more than a month without a bonus has — the web's "Plans don't fit
+    your income", in Savings' own sentence."""
+    # Imported here: `savings` imports this module at load time.
+    from .savings import advised, means_line
+    _, means = advised(data)
+    # A month can be short before any plan exists; with none asked for there is nothing to say here.
+    if not means or means.get("verdict") != "DOES_NOT_FIT" or n(means.get("goals")) <= 0:
+        return None
+    return means_line(chat_id, means)
 
 
 # ── The screen ──────────────────────────────────────────────────────────────
@@ -165,18 +181,11 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
         if short:
             lines.append(t(chat_id, "home.short", amount=fmt_money(n(short.get("amount"))),
                            date=ui.day(chat_id, short.get("date"))))
-        elif daily.get("verdict") == "OVER_PACE" and daily.get("runsOutOn"):
-            lines += _over_pace(chat_id, daily)
-        else:  # OK — and every state of a server that sends no verdict
-            safe = n(daily.get("safePerDay"))
-            lines.append(t(chat_id, "home.perDay", amount=fmt_money(safe),
-                           date=ui.day(chat_id, daily.get("until"))))
-            pace = daily.get("paceDaily")
-            if daily.get("runsOutOn") and pace is not None:
-                lines.append(t(chat_id, "home.paceRunsOut", pace=fmt_money(n(pace)),
-                               date=ui.day(chat_id, daily.get("runsOutOn"))))
-            elif pace is not None and n(pace) <= safe:
-                lines.append(t(chat_id, "home.paceOk", pace=fmt_money(n(pace))))
+        else:
+            lines += _free(chat_id, daily)
+        plans = _plans_note(chat_id, data)
+        if plans:
+            lines.append(plans)
 
         upcoming = [u for u in daily.get("upcoming") or [] if isinstance(u, dict)]
         lines += ["", t(chat_id, "home.upcoming.title")]

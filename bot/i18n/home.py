@@ -2,21 +2,19 @@
 
 `home.*`
 
-Mirrors the web Home (tracker-frontend en.home.ts / uz.home.ts). One name per thing: "You can
-spend … a day", "Coming up", "To set aside this month", "You have". One word per action (the word
+Mirrors the web Home (tracker-frontend en.home.ts / uz.home.ts). One name per thing: "Free to
+spend", "Coming up", "To set aside this month", "You have". One word per action (the word
 list, UX-FIXES-SPEC §1): Pay a bill or a loan · Put in savings · Give a donation. No engine words.
 """
 
 EN: dict[str, str] = {
     "home.perDay": "💸 You can spend <b>~{amount}</b> a day (until {date})",
+    "home.free": "💸 Free to spend until {date}: <b>{amount}</b> (~{perDay} a day)",
+    "home.freeToday": "💸 Free to spend today: <b>{amount}</b>",
+    "home.freeAfter": "<i>after bills, loans and what you set aside</i>",
     "home.paceRunsOut": "⚠️ Lately ~{pace} a day → at that pace your money runs out around {date}",
     "home.paceOk": "✅ Lately ~{pace} a day — within your limit.",
-    "home.short": "⚠️ <b>You’ll be short {amount}</b> on {date} — even if you spend nothing.",
-    "home.overPace": "⚠️ <b>At your pace, money runs out on {date}</b>",
-    "home.cause.goals": "Your plans take {goals} before {until}. Without them you could spend ~{amount} a day.",
-    "home.cause.savings": "What you set aside takes {savings} before {until}. Without it: ~{amount} a day.",
-    "home.cause.pace": "You spend about {pace} a day. Even with nothing set aside there is room for ~{amount} a day.",
-    "home.toReach": "To reach {until}: <b>~{amount}</b> a day.",
+    "home.short": "⚠️ <b>You’ll be short {amount}</b> on {date} — bills, loans and what you set aside need more than you’ll have.",
     "home.noIncome": "Set your monthly income, and I’ll show how much you can spend each day.",
 
     "home.upcoming.title": "<b>Coming up</b>",
@@ -71,14 +69,12 @@ EN: dict[str, str] = {
 
 UZ: dict[str, str] = {
     "home.perDay": "💸 Kuniga <b>~{amount}</b> sarflashingiz mumkin ({date} gacha)",
+    "home.free": "💸 {date} gacha bemalol sarflash mumkin: <b>{amount}</b> (kuniga ~{perDay})",
+    "home.freeToday": "💸 Bugun bemalol sarflash mumkin: <b>{amount}</b>",
+    "home.freeAfter": "<i>toʻlovlar, qarzlar va ajratiladigan puldan keyin</i>",
     "home.paceRunsOut": "⚠️ Soʻnggi paytda kuniga ~{pace} → shu surʼatda pulingiz taxminan {date} kuni tugaydi",
     "home.paceOk": "✅ Soʻnggi paytda kuniga ~{pace} — chegaradan oshmayapsiz.",
-    "home.short": "⚠️ <b>{date} kuni {amount} yetmay qoladi</b> — hech narsa sarflamasangiz ham.",
-    "home.overPace": "⚠️ <b>Shu surʼatda pulingiz {date} kuni tugaydi</b>",
-    "home.cause.goals": "Rejalaringiz {until} gacha {goals} oladi. Ularsiz kuniga ~{amount} sarflashingiz mumkin edi.",
-    "home.cause.savings": "Ajratadigan pulingiz {until} gacha {savings} oladi. Usiz: kuniga ~{amount}.",
-    "home.cause.pace": "Kuniga taxminan {pace} sarflayapsiz. Hech narsa ajratmasangiz ham kuniga ~{amount} ga joy bor.",
-    "home.toReach": "{until} gacha yetishi uchun: kuniga <b>~{amount}</b>.",
+    "home.short": "⚠️ <b>{date} kuni {amount} yetmay qoladi</b> — toʻlovlar, qarzlar va ajratiladigan pulga sizda boʻladiganidan koʻproq kerak.",
     "home.noIncome": "Oylik daromadingizni kiriting — har kuni qancha sarflash mumkinligini koʻrsataman.",
 
     "home.upcoming.title": "<b>Yaqin toʻlovlar</b>",
