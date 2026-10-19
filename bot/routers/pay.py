@@ -13,8 +13,8 @@ the web's own pay dialogs:
 * investments / the emergency fund — one of the owner's own accounts from GET /finance/investments
   (opening balances included, goals left out, emergency-flagged ones for the emergency fund) via
   POST /finance/investments/{id}/contribute, or the plain fund record POST /emergencies
-* a goal, or any one investment ("Put in") — POST /finance/investments/{id}/contribute
-                                                                   (kinds GOAL, HOLDING)
+* a goal, one of the owner's own savings, or any one investment ("Put in") —
+  POST /finance/investments/{id}/contribute                        (kinds GOAL, OWN, HOLDING)
 * taking money out of an account — POST /finance/investments/{id}/withdraw     (kind OUT)
 
 Home's buttons re-read the advisor first and pay the CURRENT amount, so a screen scrolled up from
@@ -57,11 +57,11 @@ router = Router(name="pay")
 log = logging.getLogger(__name__)
 
 _ICON = {"BILL": "💳", "BANK": "🏦", "LOAN": "🤝", "DEBT": "🤝", "GIVEN": "🤝", "DONATION": "🤲",
-         "EMERGENCY": "🛟", "INVESTMENTS": "📈", "GOAL": "🎯", "HOLDING": "📈", "OUT": "⬇️"}
+         "EMERGENCY": "🛟", "INVESTMENTS": "📈", "GOAL": "🎯", "OWN": "🐷", "HOLDING": "📈", "OUT": "⬇️"}
 _FUND = "fund"  # the emergency fund without an account behind it
 _NONE = "none"  # "Not from a wallet": the money was already there
 # Money into one of the owner's own accounts. "Not from a wallet" exists only for these.
-_SAVING = ("EMERGENCY", "INVESTMENTS", "GOAL", "HOLDING")
+_SAVING = ("EMERGENCY", "INVESTMENTS", "GOAL", "OWN", "HOLDING")
 _EPSILON = 0.001
 
 
@@ -259,6 +259,7 @@ def _target(chat_id: int, data: dict, kind: str, ref: int | None) -> dict | None
         if home.n(r.get("remaining")) <= 0:
             continue
         if (kind == "GOAL" and r.get("bucket") == "GOAL" and r.get("refId") == ref) or \
+                (kind == "OWN" and r.get("bucket") == "CUSTOM" and r.get("refId") == ref) or \
                 (kind in home.BUCKETS and r.get("bucket") == kind):
             return {"kind": kind, "ref": r.get("refId"), "name": home.savings_name(chat_id, r),
                     "amount": home.n(r.get("remaining"))}
@@ -283,8 +284,10 @@ async def bank_description(chat_id: int, ref: int | None) -> str:
 def _accounts(bucket: str, holdings: list[dict]) -> list[dict]:
     """The owner's accounts for this money, the one used last first, then by value."""
     emergency = bucket == "EMERGENCY"
+    # An own saving's pot is its own — never an Investments or Emergency account.
     mine = [i for i in holdings if isinstance(i, dict) and i.get("currency", CURRENCY) == CURRENCY
-            and not i.get("savingsGoal") and bool(i.get("emergencyFund")) == emergency]
+            and not i.get("savingsGoal") and not i.get("customSaving")
+            and bool(i.get("emergencyFund")) == emergency]
     last = storage.pref(f"account.{bucket}")
     return sorted(mine, key=lambda i: (i.get("id") != last,
                                        -home.n(i.get("value") or i.get("currentValue") or i.get("investedAmount"))))
@@ -531,7 +534,7 @@ def _request(flow: dict, wallet: int | str | None) -> tuple[str, dict]:
             "amount": amount, "currency": CURRENCY, "date": today, "cardId": card_id}
     if kind == "EMERGENCY" and flow.get("accountId") == _FUND:
         return "/emergencies", {"amount": amount, "currency": CURRENCY, "date": today, **card}
-    target = ref if kind in ("GOAL", "HOLDING") else flow.get("accountId")
+    target = ref if kind in ("GOAL", "OWN", "HOLDING") else flow.get("accountId")
     body = {"amount": amount, "currency": CURRENCY, "date": today, **card}
     if wallet == _NONE:
         body["noWallet"] = True
@@ -1102,11 +1105,11 @@ async def on_add_more(cb: CallbackQuery, state: FSMContext) -> None:
     kind = parts[2] if len(parts) > 2 else ""
     ref = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() and int(parts[3]) else None
     ret = ":".join(parts[4:]) or "home"
-    if kind not in (*home.BUCKETS, "GOAL") or (kind == "GOAL" and ref is None):
+    if kind not in (*home.BUCKETS, "GOAL", "OWN") or (kind in ("GOAL", "OWN") and ref is None):
         await _stale(cb, state)
         return
     name = t(chat_id, home.BUCKET_KEY[kind]) if kind in home.BUCKET_KEY else ""
-    if kind == "GOAL":
+    if kind in ("GOAL", "OWN"):
         try:
             goal = await _holding(chat_id, ref)
         except Exception as exc:  # noqa: BLE001

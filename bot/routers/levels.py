@@ -105,9 +105,17 @@ def _pct(chat_id: int | None, value: Any) -> str:
 
 
 def percents_text(chat_id: int | None, p: dict | None) -> str:
-    """"5 · 2 · 8%", a 0 as "—" (not asked): "5 · — · 5%"."""
+    """"5 · 2 · 8%", a 0 as "—" (not asked): "5 · — · 5%" — then each of the owner's own savings
+    (`custom`, by id, in the server's order), as on the web."""
+    own = (p or {}).get("custom")
     parts = [_pct(chat_id, (p or {}).get(b)) for b in BUCKETS]
+    parts += [_pct(chat_id, v) for v in (own.values() if isinstance(own, dict) else [])]
     return " · ".join(parts) + ("%" if parts[-1] != "—" else "")
+
+
+def own_names(data: dict | None) -> list[str]:
+    """The owner's own savings' names, oldest first — the columns after the three."""
+    return [str(s.get("name") or "—") for s in (data or {}).get("customSavings") or [] if isinstance(s, dict)]
 
 
 def millions(chat_id: int | None, amount: Any) -> str:
@@ -276,7 +284,8 @@ async def show_rules(event, notice: str | None = None, data: dict | None = None)
     if situation in _NAME:
         lines.append(t(chat_id, "levels.thisMonth", name=situation_name(chat_id, situation, cutoff),
                        percents=percents_text(chat_id, data.get("percents") or rules.get(situation))))
-    lines += ["", t(chat_id, "levels.legend")]
+    own = own_names(data)
+    lines += ["", t(chat_id, "levels.legendOwn", names=keyboards.esc(" · ".join(own))) if own else t(chat_id, "levels.legend")]
     for key in SITUATIONS:
         lines.append(t(chat_id, "levels.row", mark="▸" if key == situation else "•",
                        name=situation_name(chat_id, key, cutoff), percents=percents_text(chat_id, rules.get(key))))
@@ -347,7 +356,7 @@ async def on_change(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(LevelRule.numbers)
     await state.update_data(lv={"level": level, "situation": situation, "cutoff": version.get("cutoff"),
                                 "now": ((version.get("rules") or {}).get(situation) or {}), "months": months,
-                                "default": month, "income": income})
+                                "default": month, "income": income, "own": bool(own_names(data))})
     await _ask_numbers(cb, state)
 
 
@@ -360,6 +369,8 @@ async def _ask_numbers(event, state: FSMContext, error: str = "") -> None:
     lv = (await state.get_data()).get("lv") or {}
     lines = [_title(chat_id, lv), t(chat_id, "levels.ask.now", percents=percents_text(chat_id, lv.get("now"))), "",
              t(chat_id, "levels.ask.numbers")]
+    if lv.get("own"):  # the three are changed here; the owner's own savings keep theirs (the web's)
+        lines.append(t(chat_id, "levels.ask.ownElsewhere"))
     if lv["situation"] in SPLIT:
         lines.append(t(chat_id, "levels.ask.split", cutoff=fmt_money(n(lv.get("cutoff"))),
                        example=int(n(lv.get("cutoff")) or 5_000_000)))

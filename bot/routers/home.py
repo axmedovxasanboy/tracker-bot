@@ -77,13 +77,24 @@ def payable_upcoming(u: dict, month: str) -> bool:
 
 
 def savings_rows(data: dict) -> list[dict]:
-    """The three buckets, then each goal with an id — what the web's list shows."""
+    """The three buckets, then the owner's own savings (CUSTOM), then each goal with an id — what
+    the web's list shows."""
     rows = data.get("savingsThisMonth")
     if rows is None:
         rows = data.get("setAside") or []  # an older backend: the unmet rows stand in
     rows = [r for r in rows if isinstance(r, dict)]
     return ([r for r in rows if r.get("bucket") in BUCKETS]
+            + [r for r in rows if r.get("bucket") == "CUSTOM" and r.get("refId") is not None]
             + [r for r in rows if r.get("bucket") == "GOAL" and r.get("refId") is not None])
+
+
+def savings_pay(row: dict) -> tuple[str, Any]:
+    """A savings row's pay kind and ref: a goal's or an own saving's pot by its id, a bucket by name."""
+    if row.get("bucket") == "GOAL":
+        return "GOAL", row["refId"]
+    if row.get("bucket") == "CUSTOM":
+        return "OWN", row["refId"]
+    return row["bucket"], None
 
 
 def savings_total(row: dict) -> float:
@@ -220,8 +231,7 @@ def compose(chat_id: int | None, data: dict, header: str | None = None,
                 continue
             lines.append(t(chat_id, "home.savings.row", name=name, paid=fmt_num(n(r.get("paid"))),
                            target=fmt_money(savings_total(r))) + carried_note(chat_id, r, month))
-            cb = pay_callback("GOAL", r["refId"]) if r.get("bucket") == "GOAL" else pay_callback(r["bucket"])
-            pays.append((savings_button(chat_id, r), cb))
+            pays.append((savings_button(chat_id, r), pay_callback(*savings_pay(r))))
 
     checked = checked_text(chat_id, data)
     due = any(isinstance(s, dict) and s.get("action") in ("CHECK_IN", "CLOSE_MONTH")

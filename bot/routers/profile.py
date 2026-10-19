@@ -47,7 +47,7 @@ _REASON = {
 }
 # The sentences that name the cutoff are left unsaid rather than said with a hole in them.
 _NAMES_CUTOFF = frozenset({"BANK_LOAN_COMFORTABLE", "BANK_LOAN_TIGHT", "DEBTS_COMFORTABLE", "DEBTS_TIGHT"})
-_ORDER = ("DONATION", "EMERGENCY", "INVESTMENTS", "GOALS")
+_ORDER = ("DONATION", "EMERGENCY", "INVESTMENTS", "CUSTOM", "GOALS")
 
 
 def _decimal(chat_id: int | None, value: float, places: int = 1) -> str:
@@ -67,8 +67,17 @@ def bucket_name(chat_id: int | None, bucket: str) -> str:
     return t(chat_id, home.BUCKET_KEY.get(bucket, "home.bucket.goal"))
 
 
+def row_name(chat_id: int | None, row: dict) -> str:
+    """A row's name: one of the owner's own savings by its own name, else its bucket's."""
+    if row.get("bucket") == "CUSTOM":
+        return str(row.get("name") or "—")
+    return bucket_name(chat_id, row["bucket"])
+
+
 def _known(rows) -> list[dict]:
-    return [r for r in rows or [] if isinstance(r, dict) and r.get("bucket") in home.BUCKETS]
+    """The three, then the owner's own savings (CUSTOM, by name) — what this screen can name."""
+    return [r for r in rows or [] if isinstance(r, dict)
+            and (r.get("bucket") in home.BUCKETS or (r.get("bucket") == "CUSTOM" and r.get("name")))]
 
 
 def _reason(chat_id: int | None, reason: str | None, cutoff) -> str | None:
@@ -146,7 +155,7 @@ def compose(chat_id: int | None, p: dict, rules: dict | None = None) -> list[str
     for b in buckets:
         value = (f"{percent_text(chat_id, b.get('percent'))}%" if n(b.get("percent")) > 0
                  else t(chat_id, "profile.notThisMonth"))
-        lines.append(t(chat_id, "profile.ruleRow", name=bucket_name(chat_id, b["bucket"]), value=value))
+        lines.append(t(chat_id, "profile.ruleRow", name=row_name(chat_id, b), value=value))
     lines.append(t(chat_id, "profile.total", value=f"{percent_text(chat_id, p.get('totalPercent'))}%"))
 
     # ── To set aside this month ──
@@ -155,7 +164,7 @@ def compose(chat_id: int | None, p: dict, rules: dict | None = None) -> list[str
     lines += ["", t(chat_id, "profile.setAsideTitle")]
     for b in buckets:
         carried = max(0.0, n(b.get("carried")))
-        lines.append(t(chat_id, "profile.setAsideRow", name=bucket_name(chat_id, b["bucket"]),
+        lines.append(t(chat_id, "profile.setAsideRow", name=row_name(chat_id, b),
                        amount=fmt_money(n(b.get("amount")) + carried)))
         if n(b.get("percent")) > 0:
             lines.append(t(chat_id, "profile.percentOf", percent=percent_text(chat_id, b.get("percent")),
@@ -170,7 +179,7 @@ def compose(chat_id: int | None, p: dict, rules: dict | None = None) -> list[str
     bonus = n(parts.get("bonus")) if parts else n(p.get("bonusThisMonth"))
     if bonus > 0:
         lines.append(t(chat_id, "profile.withoutBonus", amount=fmt_money(n(p.get("normalMonthTotal")))))
-        lines.append("<i>" + " · ".join(f"{bucket_name(chat_id, b['bucket'])} {fmt_money(n(b.get('normalMonthAmount')))}"
+        lines.append("<i>" + " · ".join(f"{row_name(chat_id, b)} {fmt_money(n(b.get('normalMonthAmount')))}"
                                         for b in buckets) + "</i>")
 
     # ── This month so far ──
@@ -207,7 +216,7 @@ def compose(chat_id: int | None, p: dict, rules: dict | None = None) -> list[str
             if target is not None:
                 target = home.savings_total(r)  # this month's plus what earlier months left unpaid
             met = target is not None and n(target) > 0 and n(r.get("amount")) >= n(target)
-            name = t(chat_id, "profile.given") if r["bucket"] == "DONATION" else bucket_name(chat_id, r["bucket"])
+            name = t(chat_id, "profile.given") if r["bucket"] == "DONATION" else row_name(chat_id, r)
             lines.append(t(chat_id, "profile.allocRow", name=name,
                            amount=fmt_money(n(r.get("amount"))) + (" ✓" if met else ""),
                            share="—" if share is None else f"{_decimal(chat_id, n(share))}%"))

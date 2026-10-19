@@ -27,12 +27,14 @@ EN: dict[str, str] = {
     "savings.line.goalKinds": "🎯 <b>Goals</b>: {plans} plans · {wishes} wishes",
     "savings.line.emergency": "🛟 <b>Emergency fund</b>: {amount}",
     "savings.line.investments": "📈 <b>Investments</b>: {amount}",
+    "savings.line.own": "🐷 <b>Your own savings</b>: {amount}",
     "savings.line.donations": "🤲 <b>Given in {year}</b>: {amount}",
 
     # Buttons
     "savings.btn.goals": "🎯 Goals",
     "savings.btn.emergency": "🛟 Emergency fund",
     "savings.btn.investments": "📈 Investments",
+    "savings.btn.own": "🐷 Your own savings",
     "savings.btn.donations": "🤲 Donations",
     "savings.btn.add": "➕ New",
     "savings.btn.addGoal": "🎯 New goal",
@@ -78,6 +80,9 @@ EN: dict[str, str] = {
     # Investments
     "savings.inv.title": "📈 <b>Investments</b>",
     "savings.inv.empty": "No investments yet",
+    "savings.own.title": "🐷 <b>Your own savings</b>",
+    "savings.own.empty": "None yet.",
+    "savings.own.where": "<i>Made, renamed and stopped on the web: Settings → Savings rules.</i>",
     "savings.growth": "Put in {putIn} · now {value}",
     "savings.out.all": "All · {amount}",
     "savings.out.walletHelp": "The money goes into this wallet. It is not counted as income.",
@@ -171,11 +176,13 @@ UZ: dict[str, str] = {
     "savings.line.goalKinds": "🎯 <b>Maqsadlar</b>: {plans} ta reja · {wishes} ta orzu",
     "savings.line.emergency": "🛟 <b>Favqulodda jamgʻarma</b>: {amount}",
     "savings.line.investments": "📈 <b>Investitsiyalar</b>: {amount}",
+    "savings.line.own": "🐷 <b>Oʻz jamgʻarmalaringiz</b>: {amount}",
     "savings.line.donations": "🤲 <b>{year}-yilda berilgan</b>: {amount}",
 
     "savings.btn.goals": "🎯 Maqsadlar",
     "savings.btn.emergency": "🛟 Favqulodda jamgʻarma",
     "savings.btn.investments": "📈 Investitsiyalar",
+    "savings.btn.own": "🐷 Oʻz jamgʻarmalaringiz",
     "savings.btn.donations": "🤲 Xayriyalar",
     "savings.btn.add": "➕ Yangi",
     "savings.btn.addGoal": "🎯 Yangi maqsad",
@@ -218,6 +225,9 @@ UZ: dict[str, str] = {
 
     "savings.inv.title": "📈 <b>Investitsiyalar</b>",
     "savings.inv.empty": "Hali investitsiya yoʻq",
+    "savings.own.title": "🐷 <b>Oʻz jamgʻarmalaringiz</b>",
+    "savings.own.empty": "Hali yoʻq.",
+    "savings.own.where": "<i>Ular saytda yaratiladi va oʻzgartiriladi: Sozlamalar → Jamgʻarma qoidalari.</i>",
     "savings.growth": "Kiritilgan {putIn} · hozir {value}",
     "savings.out.all": "Hammasi · {amount}",
     "savings.out.walletHelp": "Pul shu hamyonga tushadi. Daromad sifatida hisoblanmaydi.",

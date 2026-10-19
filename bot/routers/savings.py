@@ -17,6 +17,9 @@ through `pay.py`) and a line per section, then a screen per section:
   ("What changed?" first), take out, edit, delete.
 * **Donations** — this year's total ("Given"), the latest entries, give one (amount, wallet,
   recipient).
+* **Your own savings** — the savings the owner added beside the three on the web's Savings rules
+  (holdings with `customSaving`): each one's worth, put in, take out. Made, renamed and stopped on the
+  web, where their percentages are.
 
 Figures are the web's: a holding is worth its server `value` (else current value, else what went
 in), growth is `putIn` against that, and a goal's plan is `goalPlan` (components/savings/goalPlan.ts).
@@ -187,11 +190,18 @@ def goal_lines(chat_id: int, g: dict, a: dict | None = None) -> list[str]:
 
 
 def _split(holdings: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
-    """Goals · emergency-fund holdings · investments — the page's three kinds of holding."""
+    """Goals · emergency-fund holdings · investments — the page's three kinds of holding (the owner's
+    own savings, `_own`, are none of them)."""
     goals = [i for i in holdings if i.get("savingsGoal")]
     emergency = [i for i in holdings if i.get("emergencyFund") and not i.get("savingsGoal")]
-    rest = [i for i in holdings if not i.get("savingsGoal") and not i.get("emergencyFund")]
+    rest = [i for i in holdings if not i.get("savingsGoal") and not i.get("emergencyFund")
+            and not i.get("customSaving")]
     return goals, emergency, rest
+
+
+def _own(holdings: list[dict]) -> list[dict]:
+    """The owner's own savings, oldest first."""
+    return sorted((i for i in holdings if i.get("customSaving")), key=lambda i: i.get("id") or 0)
 
 
 async def _list(chat_id: int, path: str) -> list[dict]:
@@ -248,7 +258,8 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
                      else t(chat_id, "savings.month.allDone"))
         for r in rows:
             name = home.savings_name(chat_id, r)
-            ref = r.get("refId") if r.get("bucket") == "GOAL" else 0
+            kind, ref = home.savings_pay(r)
+            ref = ref or 0
             total = home.savings_total(r)
             if _n(r.get("remaining")) <= 0:
                 over = _n(r.get("paid")) - total if total > 0 else 0
@@ -256,12 +267,12 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
                 if over >= 1:
                     row += " · " + t(chat_id, "savings.month.over", amount=fmt_money(over))
                 lines.append(row)
-                buttons.append((home.savings_button(chat_id, r, more=True), f"pay:m:{r['bucket']}:{ref}:sav"))
+                buttons.append((home.savings_button(chat_id, r, more=True), f"pay:m:{kind}:{ref}:sav"))
             else:
                 lines.append(t(chat_id, "savings.month.row", name=esc(name), paid=fmt_num(_n(r.get("paid"))),
                                target=fmt_money(total))
                              + home.carried_note(chat_id, r, str(data.get("date") or clock.today_iso())[:7]))
-                buttons.append((home.savings_button(chat_id, r), f"pay:{r['bucket']}:{ref}:sav"))
+                buttons.append((home.savings_button(chat_id, r), f"pay:{kind}:{ref}:sav"))
     em_total = sum(_n(e.get("amount")) for e in emergencies) + sum(value_of(i) for i in em_holdings)
     year = clock.today_iso()[:4]
     given = sum(_n(d.get("amount")) for d in donations if str(d.get("donationDate") or "").startswith(year))
@@ -273,9 +284,13 @@ async def show_savings(event: TelegramObject, notice: str | None = None) -> None
               t(chat_id, "savings.line.emergency", amount=fmt_money(em_total)),
               t(chat_id, "savings.line.investments", amount=fmt_money(sum(value_of(i) for i in invest))),
               t(chat_id, "savings.line.donations", year=year, amount=fmt_money(given))]
+    own = _own(holdings)
+    if own:
+        lines.append(t(chat_id, "savings.line.own", amount=fmt_money(sum(value_of(i) for i in own))))
     kb = ui.flow(buttons)
     kb += [[(t(chat_id, "savings.btn.goals"), "sav:goals"), (t(chat_id, "savings.btn.emergency"), "sav:em")],
            [(t(chat_id, "savings.btn.investments"), "sav:inv"), (t(chat_id, "savings.btn.donations"), "sav:don")],
+           *([[(t(chat_id, "savings.btn.own"), "sav:own")]] if own else []),
            [(t(chat_id, "savings.btn.add"), "sav:add")],
            ui.nav(chat_id, back=MORE, home=True)]
     await common.show(event, _with_notice(notice, "\n".join(lines)), ikb(kb))
@@ -460,6 +475,33 @@ async def show_investments(event: TelegramObject, notice: str | None = None) -> 
     await common.show(event, _with_notice(notice, "\n".join(lines)), ikb(kb))
 
 
+@router.callback_query(F.data == "sav:own")
+async def on_own(cb: CallbackQuery, state: FSMContext) -> None:
+    if await _enter(cb, state):
+        await show_own(cb)
+
+
+async def show_own(event: TelegramObject, notice: str | None = None) -> None:
+    """The owner's own savings: each one's worth; one tap opens it to put in or take out."""
+    chat_id = common.chat_id_of(event)
+    try:
+        own = _own(await _list(chat_id, "/finance/investments"))
+    except Exception as exc:  # noqa: BLE001
+        await pay.report(event, exc, "sav:own")
+        return
+    lines = [t(chat_id, "savings.own.title")]
+    if not own:
+        lines += ["", t(chat_id, "savings.own.empty")]
+    else:
+        lines.append(f"<b>{fmt_money(sum(value_of(i) for i in own))}</b>")
+    for i in own:
+        lines += ["", f"🐷 <b>{esc(i.get('name') or '—')}</b>", "   " + fmt_money(value_of(i))]
+    lines += ["", t(chat_id, "savings.own.where")]
+    kb = ui.grid([(home.clip("🐷 " + str(i.get("name") or "—")), f"sav:h:{i['id']}") for i in own], 2)
+    kb += [ui.nav(chat_id, back="sav", home=True)]
+    await common.show(event, _with_notice(notice, "\n".join(lines)), ikb(kb))
+
+
 @router.callback_query(F.data.startswith("sav:h:"))
 async def on_holding(cb: CallbackQuery, state: FSMContext) -> None:
     ref = _id(cb)
@@ -480,6 +522,15 @@ async def show_holding(event: TelegramObject, ref: int, notice: str | None = Non
         return
     if i.get("savingsGoal"):
         await show_goal(event, ref, notice)
+        return
+    if i.get("customSaving"):
+        # One of the owner's own savings: put in and take out here; its rule is the web's.
+        lines = [f"🐷 <b>{esc(i.get('name') or '—')}</b>", f"<b>{fmt_money(value_of(i))}</b>"]
+        kb = [[(t(chat_id, "savings.btn.topUp"), f"sav:top:{ref}")]]
+        if value_of(i) > 0:
+            kb[0].append((t(chat_id, "savings.btn.out"), f"sav:out:{ref}"))
+        kb.append(ui.nav(chat_id, back="sav:own", home=True))
+        await common.show(event, _with_notice(notice, "\n".join(lines)), ikb(kb))
         return
     emergency = bool(i.get("emergencyFund"))
     lines = [f"{'🛟' if emergency else '📈'} <b>{esc(i.get('name') or '—')}</b>"]
