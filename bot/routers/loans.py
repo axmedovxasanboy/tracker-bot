@@ -24,7 +24,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, TelegramObject
 
-from .. import api, clock, common, ui
+from .. import api, clock, common, nasiya, ui
 from ..config import CURRENCY
 from ..i18n import cat_name, t
 from ..keyboards import esc, ikb
@@ -322,10 +322,46 @@ def _monthly_line(chat_id: int, d: dict, o: dict) -> str:
     due = d["due"].get((_UPCOMING[o["kind"]], o["id"]))
     if due and due.get("overdue"):
         parts.append(t(chat_id, "loans.overdue"))
+    if o["kind"] == "taken" and nasiya.is_switched(o["record"]):
+        # A nasiya switched to installments: say so, and what it costs on top of the money received.
+        parts.insert(1, t(chat_id, "loans.nasiya.installments"))
+        cost = nasiya.cost(o["record"])
+        if cost > 0:
+            parts.append(t(chat_id, "loans.nasiya.cost", amount=fmt_money(cost)))
+    return " · ".join(parts)
+
+
+def days_left_text(chat_id: int, days: int) -> str:
+    """"5 days left" / "last day today" / "overdue …" — a nasiya's deadline, as the web's chip says it."""
+    if days < 0:
+        return t(chat_id, "loans.nasiya.overdue")
+    if days == 0:
+        return t(chat_id, "loans.nasiya.lastDay")
+    return t(chat_id, "loans.nasiya.daysLeftOne" if days == 1 else "loans.nasiya.daysLeftMany", count=days)
+
+
+def _nasiya_line(chat_id: int, d: dict, o: dict) -> str:
+    """A nasiya still to be paid by its deadline: what is left, by when, days left, what it costs."""
+    r = o["record"]
+    head = f"{_ICON[o['kind']]} <b>{esc(o['name'])}</b> · {t(chat_id, 'loans.nasiya.badge')}"
+    cost = nasiya.cost(r)
+    if o["paidOff"]:
+        parts = [head, t(chat_id, "loans.paidOff"), t(chat_id, "loans.total", amount=fmt_money(_n(r.get("totalAmount"))))]
+    else:
+        parts = [head, t(chat_id, "loans.leftToRepay", amount=fmt_money(o["remaining"] or 0))]
+        if r.get("dueDate"):
+            parts.append(t(chat_id, "loans.nasiya.payBy", date=ui.day(chat_id, r.get("dueDate"))))
+            days = nasiya.days_left(r, clock.today())
+            if days is not None:
+                parts.append(days_left_text(chat_id, days))
+    if cost > 0:
+        parts.append(t(chat_id, "loans.nasiya.cost", amount=fmt_money(cost)))
     return " · ".join(parts)
 
 
 def _asap_line(chat_id: int, d: dict, o: dict) -> str:
+    if o["kind"] == "taken" and nasiya.is_nasiya(o["record"]) and not nasiya.is_switched(o["record"]):
+        return _nasiya_line(chat_id, d, o)
     head = f"{_ICON[o['kind']]} <b>{esc(o['name'])}</b>"
     if o["paidOff"]:
         return " · ".join([head, t(chat_id, "loans.paidOff"),
@@ -555,9 +591,14 @@ async def show_record(event: TelegramObject, kind: str, ref: int, notice: str | 
             date = r.get("borrowedDate")
             lines.append(t(chat_id, "loans.personal.facts", total=fmt_money(_n(r.get("totalAmount"))),
                            paid=fmt_money(_n(r.get("paidAmount"))), date=pay.date_label(chat_id, date)))
-            if kind == "taken":
+            if kind == "taken" and nasiya.is_nasiya(r) and not nasiya.is_switched(r) and r.get("dueDate"):
+                lines.append(t(chat_id, "pay.f.row", label=t(chat_id, "loans.f.howRepay"),
+                               value=t(chat_id, "loans.nasiya.repay", date=ui.day(chat_id, r.get("dueDate")))))
+            elif kind == "taken":
                 lines.append(t(chat_id, "pay.f.row", label=t(chat_id, "loans.f.howRepay"),
                                value=t(chat_id, "loans.f.repayAsap" if o["asap"] else "loans.f.repayMonthly")))
+            if kind == "taken" and nasiya.is_open(r):
+                lines.append(t(chat_id, "loans.nasiya.webOnly"))
         if not o["paidOff"] and (kind != "bank" or o["monthly"] is not None):
             actions.append([(t(chat_id, "loans.btn.pay"), f"loan:pay:{kind}:{ref}:r")])
     actions.append([(t(chat_id, "loans.btn.edit"), f"loan:e:{kind}:{ref}"),
@@ -995,8 +1036,12 @@ def _borrowed_fields(form: dict) -> list[Field]:
               Field("amount", "loans.f.amount", "amount")]
     if not _editing(form):
         fields.append(Field("wallet", "loans.f.intoWallet", "wallet", incoming=True, none_label="loans.f.noWallet"))
-    fields += [Field("date", "loans.f.date", "date", walk=False),
-               Field("repay", "loans.f.howRepay", "choice", options=_REPAY)]
+    fields.append(Field("date", "loans.f.date", "date", walk=False))
+    # A nasiya not yet switched stays one: how it is repaid is the web's to change (it is sent as
+    # ASAP, and the server keeps its deadline and the money received).
+    existing = form["ctx"].get("record") or {}
+    if not (_editing(form) and nasiya.is_nasiya(existing) and not nasiya.is_switched(existing)):
+        fields.append(Field("repay", "loans.f.howRepay", "choice", options=_REPAY))
     if form["vals"].get("repay") == "MONTHLY":
         fields += [Field("monthly", "loans.f.monthly", "amount", hint="loans.f.monthlyHelp"),
                    Field("first", "loans.f.firstMonth", "month")]
@@ -1028,6 +1073,10 @@ async def _borrowed_save(event: TelegramObject, chat_id: int, form: dict) -> tup
             "repaymentType": v["repay"],
             "paymentStartDate": f"{v['first']}-01" if monthly and v.get("first") else None,
             "plannedMonthlyPayment": v["monthly"] if monthly else None}
+    # A switched nasiya pays on its first installment's day; sending the 1st would move it, so an
+    # edit that leaves the month alone sends no start and the server keeps the day.
+    if nasiya.is_switched(existing) and v.get("first") == _ym(existing.get("paymentStartDate")):
+        body["paymentStartDate"] = None
     if _editing(form):
         body["status"] = _status(_n(existing.get("paidAmount")), _n(v["amount"]))
         await api.request(chat_id, "PUT", f"/finance/loans-taken/{ctx['id']}", json=body)

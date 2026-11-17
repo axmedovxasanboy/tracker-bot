@@ -13,6 +13,10 @@ same buttons (`home.compose`) — when there is a reason to:
 
 Otherwise the evening is quiet. Ideas alone never trigger a message.
 
+*Nasiya deadlines* (Batch 75) are their own short message, sent before Home: for each nasiya still
+to be paid in full, 5, 2 and 1 day(s) before its deadline, on the day, and once when it has passed
+(then: switch it to installments on the web). Each notice goes out once (`bot/nasiya.py`).
+
 *It needs the owner's login*, which `bot/storage.py` keeps across restarts and
 `bot/keepalive.py` keeps fresh. If the backend rejects it, the owner is told once.
 
@@ -35,7 +39,7 @@ from typing import Any
 
 from aiogram import Bot
 
-from . import api, clock, config, keyboards, storage
+from . import api, clock, config, keyboards, nasiya, storage, ui
 from .i18n import t
 from .session import store
 
@@ -200,6 +204,7 @@ async def _tick(bot: Bot, today: dt.date) -> None:
         return
 
     _forget_before(today)
+    await _nasiya_notices(bot, chat_id, today)
     fresh = due_notices(data, today, _sent)
     weekly = today.weekday() == _WEEKLY_DAY
     if not fresh and not weekly:
@@ -223,6 +228,40 @@ async def _tick(bot: Bot, today: dt.date) -> None:
     _remember()
     log.info("Advisor message sent to chat %s (%d new item(s)%s).",
              chat_id, len(fresh), ", weekly" if weekly else "")
+
+
+async def _nasiya_notices(bot: Bot, chat_id: int, today: dt.date) -> None:
+    """Each nasiya deadline notice due today, as its own message. Contained: a failed read or send
+    costs that notice today (it is tried again tomorrow), never the evening's Home message."""
+    from .money import fmt_money
+    from .routers.loans import days_left_text
+
+    try:
+        loans = await api.request(chat_id, "GET", "/finance/loans-taken") or []
+    except Exception:  # noqa: BLE001 — a rejected login is Home's to report, just above
+        log.warning("Reminders: couldn't read borrowed money for chat %s", chat_id, exc_info=True)
+        return
+    rows = [x for x in loans if isinstance(x, dict)] if isinstance(loans, list) else []
+    for nid, loan, days in nasiya.due_notices(rows, today, _sent):
+        name = keyboards.esc(str(loan.get("lenderName") or "—"))
+        amount = fmt_money(max(0.0, float(loan.get("remainingAmount") or 0)))
+        date = ui.day(chat_id, loan.get("dueDate"))
+        if days < 0:
+            text = t(chat_id, "loans.nasiya.remindOverdue", name=name, amount=amount, date=date)
+        elif days == 0:
+            text = t(chat_id, "loans.nasiya.remindToday", name=name, amount=amount)
+        else:
+            text = t(chat_id, "loans.nasiya.remindSoon", name=name, amount=amount, date=date,
+                     days=days_left_text(chat_id, days))
+        try:
+            await bot.send_message(chat_id, text,
+                                   reply_markup=keyboards.ikb([[(t(chat_id, "loans.nasiya.open"), "loan")]]))
+        except Exception:  # noqa: BLE001
+            log.warning("Reminders: couldn't deliver a nasiya notice to chat %s", chat_id, exc_info=True)
+            return
+        _sent[nid] = today.isoformat()
+        _remember()
+        log.info("Nasiya notice %s sent to chat %s.", nid, chat_id)
 
 
 def _forget_before(today: dt.date) -> None:

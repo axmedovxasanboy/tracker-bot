@@ -140,6 +140,22 @@ EN: dict[str, str] = {
     "loans.f.errDateBefore": "That date can't be before {date}.",
     "loans.borrowedToast": "Borrowed {amount} from {name} — added to {wallet}",
     "loans.lentToast": "Lent {amount} to {name} — taken from {wallet}",
+    # Nasiya (Batch 75): pay all by a deadline for a fee, or switched to installments on the web
+    "loans.nasiya.badge": "Nasiya",
+    "loans.nasiya.installments": "Nasiya · installments",
+    "loans.nasiya.payBy": "pay by {date}",
+    "loans.nasiya.daysLeftOne": "{count} day left",
+    "loans.nasiya.daysLeftMany": "{count} days left",
+    "loans.nasiya.lastDay": "<b>last day today</b>",
+    "loans.nasiya.overdue": "<b>overdue</b> — switch it to installments on the web",
+    "loans.nasiya.cost": "fee {amount}",
+    "loans.nasiya.repay": "Nasiya — pay it all by {date}",
+    "loans.nasiya.webOnly": "Switching to installments and updating what's left are on the web: Loans & bills.",
+    "loans.nasiya.remindSoon": "⏰ <b>{name}</b>: {amount} to pay by {date} — {days}.",
+    "loans.nasiya.remindToday": "⏰ <b>{name}</b>: today is the last day to pay {amount}. Pay today and only the fee is added.",
+    "loans.nasiya.remindOverdue": "⚠️ <b>{name}</b>: the deadline ({date}) has passed, {amount} left. Switch it to installments on the web, with the figures from the app.",
+    "loans.nasiya.open": "💳 Loans & bills",
+
 }
 
 UZ: dict[str, str] = {
@@ -271,4 +287,20 @@ UZ: dict[str, str] = {
     "loans.f.errDateBefore": "Bu sana {date} dan oldin boʻlishi mumkin emas.",
     "loans.borrowedToast": "{name} dan {amount} qarz olindi — {wallet} ga qoʻshildi",
     "loans.lentToast": "{name} ga {amount} qarz berildi — {wallet} dan olindi",
+    # Nasiya (Batch 75)
+    "loans.nasiya.badge": "Nasiya",
+    "loans.nasiya.installments": "Nasiya · boʻlib toʻlash",
+    "loans.nasiya.payBy": "{date} gacha",
+    "loans.nasiya.daysLeftOne": "{count} kun qoldi",
+    "loans.nasiya.daysLeftMany": "{count} kun qoldi",
+    "loans.nasiya.lastDay": "<b>bugun oxirgi kun</b>",
+    "loans.nasiya.overdue": "<b>muddati oʻtdi</b> — saytda boʻlib toʻlashga oʻtkazing",
+    "loans.nasiya.cost": "ustama {amount}",
+    "loans.nasiya.repay": "Nasiya — {date} gacha hammasini toʻlash",
+    "loans.nasiya.webOnly": "Boʻlib toʻlashga oʻtkazish va qoldiqni yangilash saytda: Qarzlar va toʻlovlar.",
+    "loans.nasiya.remindSoon": "⏰ <b>{name}</b>: {date} gacha {amount} toʻlash kerak — {days}.",
+    "loans.nasiya.remindToday": "⏰ <b>{name}</b>: {amount} toʻlash uchun bugun oxirgi kun. Bugun toʻlasangiz, faqat xizmat haqi qoʻshiladi.",
+    "loans.nasiya.remindOverdue": "⚠️ <b>{name}</b>: muddat ({date}) oʻtdi, {amount} qoldi. Ilovadagi raqamlar bilan saytda boʻlib toʻlashga oʻtkazing.",
+    "loans.nasiya.open": "💳 Qarzlar va toʻlovlar",
+
 }
